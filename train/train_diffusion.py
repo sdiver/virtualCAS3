@@ -18,7 +18,7 @@ from torch.utils.tensorboard import SummaryWriter
 from train.train_platforms import ClearmlPlatform, NoPlatform, TensorboardPlatform
 from train.training_loop import TrainLoop
 from utils.diff_parser_utils import train_args
-from utils.misc import cleanup, fixseed, setup_dist
+from utils.misc import cleanup, fix_seed, setup_dist
 from utils.model_util import create_model_and_diffusion
 
 
@@ -37,7 +37,7 @@ def main(rank: int, world_size: int):
     这两行代码调用了一些函数来解析训练参数并固定随机种子
     """
     args = train_args()
-    fixseed(args.seed)
+    fix_seed(args.seed)
     """
     2\训练平台与分布式设置
     使用解析出来的参数初始化训练平台，并进行分布式环境的设置。 

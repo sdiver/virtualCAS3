@@ -40,7 +40,7 @@ def cleanup():
 
 def setup_dist(device=0):
     """
-    Setup a distributed process group.
+    Set up a distributed process group.
     """
     global used_device
     used_device = device
@@ -135,7 +135,7 @@ def broadcast_tensors(tensors: tp.Iterable[torch.Tensor], src: int = 0):
         handle.wait()
 
 
-def fixseed(seed):
+def fix_seed(seed):
     """
     :param seed: An integer used to initialize the random number generators for reproducibility.
     :return: None
@@ -152,7 +152,6 @@ def fixseed(seed):
     np.random.seed(seed)
     # 固定PyTorch的随机数生成器的种子
     torch.manual_seed(seed)
-
 
 def prGreen(skk):
     print("\033[92m {}\033[00m".format(skk))
