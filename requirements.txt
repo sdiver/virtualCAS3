@@ -1,0 +1,5 @@
+tqdm~=4.65.0
+numpy~=1.24.3
+torch~=2.4.1
+blobfile~=3.0.0
+diffusion~=6.11.0
