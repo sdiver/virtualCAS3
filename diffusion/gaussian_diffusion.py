@@ -107,7 +107,7 @@ class LossType(enum.Enum):
 
 class GaussianDiffusion:
     """
-    Utilities for training and sampling diffusion models.
+    Utilities for training and sampling diffusion model.
 
     Ported directly from here, and then adapted over time to further experimentation.
     https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/diffusion_utils_2.py#L42

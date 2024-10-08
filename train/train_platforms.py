@@ -9,7 +9,7 @@ import os
 
 class TrainPlatform:
     """
-    Represents a platform for training models with capabilities to report metrics and arguments, and to handle resource cleanup.
+    Represents a platform for training model with capabilities to report metrics and arguments, and to handle resource cleanup.
 
     Methods:
         __init__(self, save_dir):
