@@ -144,6 +144,16 @@ def diffusion_options(parser):
         "--sigma_small", default=True, type=bool, help="Use smaller sigma values."
     )
 
+def add_base_options(parser):
+    group = parser.add_argument_group("base")
+    group.add_argument(
+        "--cuda", default=True, type=bool, help="Use cuda device, otherwise use CPU."
+    )
+    group.add_argument("--device", default=0, type=int, help="Device id to use.")
+    group.add_argument("--seed", default=10, type=int, help="For fixing random seed.")
+    group.add_argument(
+        "--batch_size", default=64, type=int, help="Batch size during training."
+    )
 
 def model_options(parser):
     group = parser.add_argument_group("model")
@@ -318,21 +328,6 @@ def add_sampling_options(parser):
         help="whether to use pretrained clipmodel for audio encoding",
     )
 
-def add_generate_options(parser):
-    group = parser.add_argument_group("generate")
-    group.add_argument(
-        "--plot",
-        action="store_true",
-        help="Whether or not to save the renderings as a video.",
-    )
-    group.add_argument(
-        "--resume_trans",
-        default=None,
-        type=str,
-        help="keyframe prediction network.",
-    )
-    group.add_argument("--flip_person", action="store_true")
-
 
 def add_generate_options(parser):
     group = parser.add_argument_group("generate")
@@ -364,3 +359,11 @@ def train_args():
     model_options(parser)
     training_options(parser)
     return parser.parse_args()
+
+def generate_args():
+    parser = ArgumentParser()
+    add_base_options(parser)
+    add_sampling_options(parser)
+    add_generate_options(parser)
+    args = parse_and_load_from_model(parser)
+    return args
