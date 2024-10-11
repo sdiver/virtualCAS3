@@ -33,7 +33,6 @@ class Social(data.Dataset):
             for d in data_dict["data"]:
                 missing.append(np.ones_like(d))
             data_dict["missing"] = missing
-
         # set up variables for dataloader
         self.data_format = args.data_format
         self.add_frame_cond = args.add_frame_cond
@@ -49,9 +48,13 @@ class Social(data.Dataset):
         self.min_seq_length = 400
 
         # set up training/validation splits
-        train_idx = list(range(0, len(data_dict["data"]) - 6))
-        val_idx = list(range(len(data_dict["data"]) - 6, len(data_dict["data"]) - 4))
-        test_idx = list(range(len(data_dict["data"]) - 4, len(data_dict["data"])))
+        # train_idx = list(range(0, len(data_dict["data"]) - 6))
+        # val_idx = list(range(len(data_dict["data"]) - 6, len(data_dict["data"]) - 4))
+        # test_idx = list(range(len(data_dict["data"]) - 4, len(data_dict["data"])))
+        train_idx =list(range(0, len(data_dict["data"])))
+        val_idx =list(range(0, len(data_dict["data"])))
+        test_idx =list(range(0, len(data_dict["data"])))
+        print(train_idx, val_idx, test_idx)
         self.split = split
         if split == "train":
             self._pick_sequences(data_dict, train_idx)
@@ -64,6 +67,7 @@ class Social(data.Dataset):
             print("[dataset.py] chunking data...")
             self._chunk_data()
         self._load_std()
+        print("Dataset loaded with length:", len(self.data))
         prGreen(
             f"[dataset.py] {split} | {len(self.data)} sequences ({self.data[0].shape}) | total len {self.total_len}"
         )
@@ -91,6 +95,14 @@ class Social(data.Dataset):
             return data * std + mean
 
     def _pick_sequences(self, data_dict: Dict[str, Iterable], idx: List[int]) -> None:
+
+        # max_len = max(len(sublist) for sublist in data_dict["data"])
+        #
+        # # 使用 np.pad 填充子列表
+        # padded_data = np.array(
+        #     [np.pad(sublist, (0, max_len - len(sublist)), mode='constant') for sublist in data_dict["data"]])
+        print("data:", data_dict["data"])
+        print("idx:", idx)
         self.data = np.take(data_dict["data"], idx, axis=0)
         self.missing = np.take(data_dict["missing"], idx, axis=0)
         self.audio = np.take(data_dict["audio"], idx, axis=0)
