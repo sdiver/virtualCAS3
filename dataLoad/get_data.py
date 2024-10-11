@@ -12,8 +12,8 @@ from typing import Dict, List
 import numpy as np
 import torch
 import torchaudio
-from data_loaders.data import Social
-from data_loaders.tensors import social_collate
+from dataLoad.data import Social
+from dataLoad.tensors import social_collate
 from torch.utils.data import DataLoader
 from utils.misc import prGreen
 

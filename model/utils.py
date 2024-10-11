@@ -16,7 +16,7 @@ from torch import nn
 
 
 def setup_lip_regressor() -> ("Audio2LipRegressionTransformer", T.Resample):
-    cp_path = "./assets/vq-wav2vec.pt"
+    cp_path = "./.assets/vq-wav2vec.pt"
     audio_model, _, _ = fairseq.checkpoint_utils.load_model_ensemble_and_task([cp_path])
     audio_model = audio_model[0]
     for param in audio_model.parameters():
