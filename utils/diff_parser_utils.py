@@ -318,6 +318,21 @@ def add_sampling_options(parser):
         help="whether to use pretrained clipmodel for audio encoding",
     )
 
+def add_generate_options(parser):
+    group = parser.add_argument_group("generate")
+    group.add_argument(
+        "--plot",
+        action="store_true",
+        help="Whether or not to save the renderings as a video.",
+    )
+    group.add_argument(
+        "--resume_trans",
+        default=None,
+        type=str,
+        help="keyframe prediction network.",
+    )
+    group.add_argument("--flip_person", action="store_true")
+
 
 def add_generate_options(parser):
     group = parser.add_argument_group("generate")
