@@ -8,3 +8,12 @@
 
 pip install git+https://github.com/Tps-F/fairseq.git@main
 pip install pysoundfile
+
+
+python -m sample.generate 
+    --model_path <path/to/model> 
+    --resume_trans <path/to/guide/model> 
+    --num_samples <xsamples> 
+    --num_repetitions <xreps> 
+    --timestep_respacing ddim500 
+    --guidance_param 2.0c
