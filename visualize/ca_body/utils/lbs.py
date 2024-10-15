@@ -570,7 +570,7 @@ def load_momentum_cfg(model, lbs_config_txt_fh, nr_scaling_params=None):
         for parameterPair in parameterList:
             parameterPair = parameterPair.strip()
 
-            r = re.search("\s*([+-]?[0-9]*\.?[0-9]*)\s\*\s(\w+)\s*", parameterPair)
+            r = re.search(r"\s*([+-]?[0-9]*\.?[0-9]*)\s\*\s(\w+)\s*", parameterPair)
             if r is None or len(r.groups()) != 2:
                 logger.info(
                     "Malformed parameter description "
