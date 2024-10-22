@@ -9,7 +9,7 @@ import fairseq
 import torch as th
 import torchaudio as ta
 
-wav2vec_model_path = "./.assets/wav2vec_large.pt"
+wav2vec_model_path = "./assets/wav2vec_large.pt"
 
 
 def weights_init(m):

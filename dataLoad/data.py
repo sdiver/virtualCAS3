@@ -54,7 +54,6 @@ class Social(data.Dataset):
         train_idx =list(range(0, len(data_dict["data"])))
         val_idx =list(range(0, len(data_dict["data"])))
         test_idx =list(range(0, len(data_dict["data"])))
-        print(train_idx, val_idx, test_idx)
         self.split = split
         if split == "train":
             self._pick_sequences(data_dict, train_idx)
@@ -101,11 +100,53 @@ class Social(data.Dataset):
         # # 使用 np.pad 填充子列表
         # padded_data = np.array(
         #     [np.pad(sublist, (0, max_len - len(sublist)), mode='constant') for sublist in data_dict["data"]])
-        print("data:", data_dict["data"])
-        print("idx:", idx)
-        self.data = np.take(data_dict["data"], idx, axis=0)
-        self.missing = np.take(data_dict["missing"], idx, axis=0)
-        self.audio = np.take(data_dict["audio"], idx, axis=0)
+
+        # 处理data数据
+        # 1. 首先找出第二维度的最大值
+        max_second_dim = max(item.shape[1] for item in data_dict["data"])
+
+        # 2. 正确填充到最大维度
+        padded_list = []
+        for item in data_dict["data"]:
+            # 创建填充数组
+            padded = np.zeros((9019, max_second_dim))
+            # 复制原始数据
+            padded[:item.shape[0], :item.shape[1]] = item
+            padded_list.append(padded)
+
+        # 3. 转换为最终数组
+        final_array = np.array(padded_list)
+
+        missing_max_len = max(len(sublist) for sublist in data_dict["missing"])
+
+        # 2. 正确填充到最大维度
+        missing_padded_list = []
+        for item in data_dict["missing"]:
+            # 创建填充数组
+            padded = np.zeros((9019, max_second_dim))
+            # 复制原始数据
+            padded[:item.shape[0], :item.shape[1]] = item
+            missing_padded_list.append(padded)
+
+        # 3. 转换为最终数组
+        missing_final_array = np.array(missing_padded_list)
+
+        try:
+            self.audio = process_audio_tensors(data_dict["audio"], idx)
+            print(f"处理后的音频批次形状: {self.audio.shape}")
+
+            # 验证填充是否正确
+            print("\n验证:")
+            print(f"最大值: {self.audio.max()}")
+            print(f"最小值: {self.audio.min()}")
+            print(f"包含的非零值数量: {torch.count_nonzero(self.audio)}")
+
+        except Exception as e:
+            print(f"处理出错: {str(e)}")
+
+        self.data = np.take(final_array, idx, axis=0)
+        self.missing = np.take(missing_final_array, idx, axis=0)
+        self.audio = np.take(self.audio, idx, axis=0)
         self.lengths = np.take(data_dict["lengths"], idx, axis=0)
         self.total_len = sum([len(d) for d in self.data])
 
@@ -263,3 +304,35 @@ class Social(data.Dataset):
         if self.data_format == "face":
             data_dict["motion"] *= data_dict["missing"]
         return data_dict
+
+
+
+# 填充到最长长度（返回一个批次张量）
+
+def process_audio_tensors(tensor_list, idx):
+    # 选择张量
+    selected_tensors = [tensor_list[i] for i in idx]
+
+    # 获取长度信息
+    lengths = [tensor.shape[0] for tensor in selected_tensors]
+    max_len = max(lengths)
+    print(f"最长音频长度: {max_len}")
+
+    # 填充到最长长度
+    processed_tensors = []
+    for tensor in selected_tensors:
+        if tensor.shape[0] < max_len:
+            # 创建填充
+            padding = torch.zeros((max_len - tensor.shape[0], tensor.shape[1]),
+                                  dtype=tensor.dtype,
+                                  device=tensor.device)
+            # 拼接原始数据和填充
+            padded = torch.cat([tensor, padding], dim=0)
+            processed_tensors.append(padded)
+        else:
+            processed_tensors.append(tensor)
+
+    # 堆叠成一个批次
+    return torch.stack(processed_tensors)
+
+
