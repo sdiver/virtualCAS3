@@ -466,6 +466,11 @@ def main(args):
             trainer.evaluation_vqvae(
                 val_loader, iteration_count, save=(args.total_iter > 0), savenpy=True
             )
+ # 添加输出
+    print("Training completed.")
+    print(f"Final metrics - Commit: {avg_commit:.5f}, PPL: {avg_perplexity:.2f}, Recons: {avg_recons:.5f}")
+    print(f"Best metrics - Commit: {trainer.best_commit:.5f}, PPL: {trainer.best_perplexity:.2f}, Recons: {trainer.best_recons:.5f}")
+    print(f"Model saved at: {args.out_dir}")
 
 
 if __name__ == "__main__":
