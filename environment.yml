@@ -7,9 +7,6 @@ channels:
 dependencies:
   - python=3.8
   # Core ML packages
-  - pytorch=2.5.0
-  - torchvision=0.20.0
-  - torchaudio=2.5.0
   - cudatoolkit=11.8
   - tensorboard=2.18.0
   - scikit-learn=1.5.2

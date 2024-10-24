@@ -17,3 +17,45 @@ python -m sample.generate
     --num_repetitions <xreps> 
     --timestep_respacing ddim500 
     --guidance_param 2.0c
+
+
+### 3) Body VQ VAE
+To train a vq encoder-decoder, you will need to run the following script:
+```
+python -m train.train_vq 
+    --out_dir <path/to/out/dir> 
+    --data_root <path/to/data/root>
+    --batch_size <bs>
+    --lr 1e-3 
+    --code_dim 1024 
+    --output_emb_width 64 
+    --depth 4 
+    --dataname social 
+    --loss_vel 0.0 
+    --add_frame_cond 1 
+    --data_format pose 
+    --max_seq_length 600
+```
+:point_down: For person `PXB184`, it would be:
+```
+python -m train.train_vq --out_dir checkpoints/vq/c1_vq_test --data_root ./dataset/PXB184/ --lr 1e-3 --code_dim 1024 --output_emb_width 64 --depth 4 --dataname social --loss_vel 0.0 --data_format pose --batch_size 4 --add_frame_cond 1 --max_seq_length 600
+```
+
+### 4) Body guide transformer
+Once you have the vq trained from 3) you can then pass it in to train the body guide pose transformer:
+```
+python -m train.train_guide 
+    --out_dir <path/to/out/dir>
+    --data_root <path/to/data/root>
+    --batch_size <bs>
+    --resume_pth <path/to/vq/model>
+    --add_frame_cond 1 
+    --layers 6 
+    --lr 2e-4 
+    --gn 
+    --dim 64 
+```
+:point_down: For person `PXB184`, it would be:
+```
+python -m train.train_guide --out_dir checkpoints/guide/c1_trans_test --data_root ./dataset/PXB184/ --batch_size 4 --resume_pth checkpoints/vq/c1_vq_test/net_iter300000.pth --add_frame_cond 1 --layers 6 --lr 2e-4 --gn --dim 64
+```
