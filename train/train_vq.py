@@ -13,7 +13,7 @@ import model.vqvae as vqvae
 import numpy as np
 import torch
 import torch.optim as optim
-from data_loaders.get_data import get_dataset_loader, load_local_data
+from dataLoad.get_data import get_dataset_loader, load_local_data
 from diffusion.nn import sum_flat
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm

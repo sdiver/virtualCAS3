@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from utils.guide_parser_utils import train_args
-from utils.misc import fixseed
+from utils.misc import fix_seed
 
 
 class ModelTrainer:
@@ -303,7 +303,7 @@ def _load_data_info(args) -> (DataLoader, DataLoader):
 
 
 def main(args):
-    fixseed(args.seed)
+    fix_seed(args.seed)
     os.makedirs(args.out_dir, exist_ok=True)
     writer = SummaryWriter(f"{args.out_dir}/logs/")
     args_path = os.path.join(args.out_dir, "args.json")
