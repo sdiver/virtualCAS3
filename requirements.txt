@@ -150,9 +150,6 @@ terminado @ file:///croot/terminado_1671751832461/work
 threadpoolctl==3.5.0
 tinycss2 @ file:///croot/tinycss2_1668168815555/work
 tomli @ file:///opt/conda/conda-bld/tomli_1657175507142/work
-torch==2.5.0+cu118
-torchaudio==2.5.0+cu118
-torchvision==0.20.0+cu118
 tornado @ file:///croot/tornado_1718740109488/work
 tqdm==4.66.5
 traitlets @ file:///croot/traitlets_1718227057033/work
@@ -168,3 +165,6 @@ websocket-client @ file:///croot/websocket-client_1715878298792/work
 Werkzeug==3.0.4
 widgetsnbextension==4.0.13
 zipp @ file:///croot/zipp_1729012354496/work
+
+fairseq~=0.12.2
+gradio~=4.44.1
