@@ -308,9 +308,9 @@ class ModelTrainer:
             print(f"saving checkpoint net_last.pth")
             self.save_model(os.path.join(self.out_dir, "net_last.pth"))
             if nb_iter % 100000 == 0:
-                print(f"saving checkpoint net_iter_{nb_iter}.pth")
+                print(f"saving checkpoint net_iter_x.pth")
                 self.save_model(
-                    os.path.join(self.out_dir, f"net_iter_{nb_iter}.pth")
+                    os.path.join(self.out_dir, "net_iter" + str(nb_iter) + ".pth")
                 )
 
 
@@ -362,8 +362,8 @@ def _load_checkpoint(args, net, logger):
     cp_dir = os.path.dirname(args.resume_pth)
     with open(f"{cp_dir}/args.json") as f:
         trans_args = json.load(f)
-    assert trans_args["data_root"] == args.data_root, "data_root doesn't match"
-    logger.info(f"loading checkpoint from {args.resume_pth}")
+    assert trans_args["data_root"] == args.data_root, "data_root doesnt match"
+    logger.info("loading checkpoint from {}".format(args.resume_pth))
     ckpt = torch.load(args.resume_pth, map_location="cpu")
     net.load_state_dict(ckpt["net"], strict=True)
     return net
@@ -438,7 +438,7 @@ def main(args):
             val_loader, 0, save=(args.total_iter > 0), savenpy=True
         )
 
-    for iteration_count in range(1, args.total_iter + 1):
+    for nb_iter in range(1, args.total_iter + 1):
         gt_motion, cond = next(train_loader_iter)
         loss_dict = trainer.run_train_step(gt_motion, cond, skip_step)
         trainer.scheduler.step()
@@ -447,24 +447,24 @@ def main(args):
         avg_perplexity += loss_dict["perplexity"]
         avg_commit += loss_dict["loss_commit"]
 
-        if iteration_count % args.print_iter == 0:
+        if nb_iter % args.print_iter == 0:
             avg_recons /= args.print_iter
             avg_perplexity /= args.print_iter
             avg_commit /= args.print_iter
 
-            writer.add_scalar("./Train/L1", avg_recons, iteration_count)
-            writer.add_scalar("./Train/PPL", avg_perplexity, iteration_count)
-            writer.add_scalar("./Train/Commit", avg_commit, iteration_count)
+            writer.add_scalar("./Train/L1", avg_recons, nb_iter)
+            writer.add_scalar("./Train/PPL", avg_perplexity, nb_iter)
+            writer.add_scalar("./Train/Commit", avg_commit, nb_iter)
 
             logger.info(
-                f"Train. Iter {iteration_count} : \t Commit. {avg_commit:.5f} \t PPL. {avg_perplexity:.2f} \t Recons.  {avg_recons:.5f}"
+                f"Train. Iter {nb_iter} : \t Commit. {avg_commit:.5f} \t PPL. {avg_perplexity:.2f} \t Recons.  {avg_recons:.5f}"
             )
 
             avg_recons, avg_perplexity, avg_commit = (0.0, 0.0, 0.0)
 
-        if iteration_count % args.eval_iter == 0:
+        if nb_iter % args.eval_iter == 0:
             trainer.evaluation_vqvae(
-                val_loader, iteration_count, save=(args.total_iter > 0), savenpy=True
+                val_loader, nb_iter, save=(args.total_iter > 0), savenpy=True
             )
  # 添加输出
     print("Training completed.")

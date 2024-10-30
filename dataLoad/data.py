@@ -48,12 +48,9 @@ class Social(data.Dataset):
         self.min_seq_length = 400
 
         # set up training/validation splits
-        # train_idx = list(range(0, len(data_dict["data"]) - 6))
-        # val_idx = list(range(len(data_dict["data"]) - 6, len(data_dict["data"]) - 4))
-        # test_idx = list(range(len(data_dict["data"]) - 4, len(data_dict["data"])))
-        train_idx =list(range(0, len(data_dict["data"])))
-        val_idx =list(range(0, len(data_dict["data"])))
-        test_idx =list(range(0, len(data_dict["data"])))
+        train_idx = list(range(0, len(data_dict["data"]) - 6))
+        val_idx = list(range(len(data_dict["data"]) - 6, len(data_dict["data"]) - 4))
+        test_idx = list(range(len(data_dict["data"]) - 4, len(data_dict["data"])))
         self.split = split
         if split == "train":
             self._pick_sequences(data_dict, train_idx)
@@ -66,7 +63,6 @@ class Social(data.Dataset):
             print("[dataset.py] chunking data...")
             self._chunk_data()
         self._load_std()
-        print("Dataset loaded with length:", len(self.data))
         prGreen(
             f"[dataset.py] {split} | {len(self.data)} sequences ({self.data[0].shape}) | total len {self.total_len}"
         )

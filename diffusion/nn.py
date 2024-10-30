@@ -161,7 +161,7 @@ def checkpoint(func, inputs, params, flag):
 
 class CheckpointFunction(th.autograd.Function):
     @staticmethod
-    @th.amp.custom_fwd(device_type='cuda')
+    @th.cuda.amp.custom_fwd
     def forward(ctx, run_function, length, *args):
         ctx.run_function = run_function
         ctx.input_length = length
@@ -171,7 +171,7 @@ class CheckpointFunction(th.autograd.Function):
         return output_tensors
 
     @staticmethod
-    @th.amp.custom_fwd(device_type='cuda')
+    @th.cuda.amp.custom_bwd
     def backward(ctx, *output_grads):
         args = list(ctx.saved_tensors)
 
