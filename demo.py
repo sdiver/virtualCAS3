@@ -28,18 +28,23 @@ class GradioModel:
     def __init__(self, face_args, pose_args) -> None:
         # 初始化面部模型和姿势模型
         self.face_model, self.face_diffusion, self.device = self._setup_model(
-            face_args, "checkpoints/diffusion/c1_face/model000155000.pt"
+            face_args, "checkpoints-bak/checkpoints-184/diffusion/c1_face/model000155000.pt"
+            # face_args, "checkpoints/diffusion/c1_face_test/model000155000.pt"
         )
         self.pose_model, self.pose_diffusion, _ = self._setup_model(
-            pose_args, "checkpoints/diffusion/c1_pose/model000340000.pt"
+            pose_args, "checkpoints-bak/checkpoints-184/diffusion/c1_pose/model000340000.pt"
+            # pose_args, "checkpoints/diffusion/c1_pose_test/model000340000.pt"
         )
         # 加载标准化数据
         stats = torch.load("dataset/PXB184/data_stats.pth")
         stats["pose_mean"] = stats["pose_mean"].reshape(-1)
         stats["pose_std"] = stats["pose_std"].reshape(-1)
+        print("---------------stats----------------------")
+        print(stats)
+        print("---------------stats----------------------")
         self.stats = stats
         # 设置渲染器
-        config_base = f"./checkpoints/ca_body/data/PXB184"
+        config_base = f"./checkpoints-bak/checkpoints-184/PXB184"
         self.body_renderer = BodyRenderer(
             config_base=config_base,
             render_rgb=True,
@@ -71,7 +76,8 @@ class GradioModel:
         args.output_dir = "/tmp/gradio/"
         args.timestep_respacing = "ddim100"
         if args.data_format == "pose":
-            args.resume_trans = "checkpoints/guide/c1_pose/checkpoints/iter-0100000.pt"
+            args.resume_trans = "checkpoints-bak/checkpoints-184/guide/c1_pose/checkpoints/iter-0100000.pt"
+            # args.resume_trans = "checkpoints/guide/c1_pose/checkpoints/iter-0100000.pt"
 
         # 创建模型
         model, diffusion = create_model_and_diffusion(args, split_type="test")
@@ -331,15 +337,17 @@ def audio_to_avatar(audio: np.ndarray, num_repetitions: int, top_p: float):
 
 # 初始化Gradio模型
 gradio_model = GradioModel(
-    face_args="./checkpoints/diffusion/c1_face/args.json",
-    pose_args="./checkpoints/diffusion/c1_pose/args.json",
+    face_args="./checkpoints-bak/checkpoints-184/diffusion/c1_face/args.json",
+    # face_args="./checkpoints/diffusion/c1_face_test/args.json",
+    pose_args="./checkpoints-bak/checkpoints-184/diffusion/c1_pose/args.json",
+    # pose_args="./checkpoints/diffusion/c1_pose_test/args.json",
 )
 
 # 创建Gradio界面
 demo = gr.Interface(
     audio_to_avatar,  # 主函数
     [
-        gr.Audio(sources=["microphone"]),
+        gr.Audio(sources=["microphone","upload"]),
         gr.Number(
             value=3,
             label="Number of Samples (default = 3)",
