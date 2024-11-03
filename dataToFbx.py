@@ -6,108 +6,123 @@ from mathutils import Euler, Vector
 
 def npy_to_fbx(npy_path, fbx_path):
     try:
-        # 确保在正确的上下文中执行
+        # Ensure we're in the correct context
         for area in bpy.context.screen.areas:
             if area.type == 'VIEW_3D':
                 override = bpy.context.copy()
                 override['area'] = area
                 break
 
-        # 清除场景
+        # Clear the scene
         for obj in bpy.data.objects:
             bpy.data.objects.remove(obj, do_unlink=True)
 
-        # 加载数据
+        # Load data
         print("Loading motion data...")
         motion_data = np.load(npy_path)
         print(f"Motion data shape: {motion_data.shape}")
 
-        # 获取维度信息
-        num_frames = len(motion_data)
-        data_points_per_frame = motion_data.shape[1]
-        num_bones = data_points_per_frame // 6
+        # Get dimension information
+        num_frames, num_features = motion_data.shape
+
+        # Assuming the pose data is 104-dimensional as in demo.py
+        assert num_features == 104, "Expected 104 features for pose data"
 
         print(f"Number of frames: {num_frames}")
-        print(f"Data points per frame: {data_points_per_frame}")
-        print(f"Calculated number of bones: {num_bones}")
+        print(f"Number of features: {num_features}")
 
-        # 创建骨骼armature
+        # Create armature
         bpy.ops.object.armature_add(enter_editmode=True)
         armature = bpy.context.active_object
         armature.name = "Motion_Armature"
 
-        # 获取编辑骨骼
+        # Get edit bones
         edit_bones = armature.data.edit_bones
 
-        # 删除默认骨骼
+        # Remove default bone
         for bone in edit_bones:
             edit_bones.remove(bone)
 
-        # 创建骨骼
-        for i in range(num_bones):
-            bone = edit_bones.new(f'Bone_{i}')
-            bone.head = (0, 0, i * 0.2)
-            bone.tail = (0, 0, (i * 0.2) + 0.1)
-            if i > 0:
-                bone.parent = edit_bones[i - 1]
+        # Create bones based on SMPL model structure
+        bone_names = [
+            'Pelvis', 'L_Hip', 'R_Hip', 'Spine1', 'L_Knee', 'R_Knee', 'Spine2', 'L_Ankle', 'R_Ankle', 'Spine3',
+            'L_Foot', 'R_Foot', 'Neck', 'L_Collar', 'R_Collar', 'Head', 'L_Shoulder', 'R_Shoulder',
+            'L_Elbow', 'R_Elbow', 'L_Wrist', 'R_Wrist', 'L_Hand', 'R_Hand'
+        ]
 
-        # 切换到姿态模式
+        for i, name in enumerate(bone_names):
+            bone = edit_bones.new(name)
+            bone.head = (0, 0, i * 0.1)
+            bone.tail = (0, 0, (i * 0.1) + 0.05)
+
+        # Set up bone hierarchy
+        edit_bones['L_Hip'].parent = edit_bones['Pelvis']
+        edit_bones['R_Hip'].parent = edit_bones['Pelvis']
+        edit_bones['Spine1'].parent = edit_bones['Pelvis']
+        edit_bones['L_Knee'].parent = edit_bones['L_Hip']
+        edit_bones['R_Knee'].parent = edit_bones['R_Hip']
+        edit_bones['Spine2'].parent = edit_bones['Spine1']
+        edit_bones['L_Ankle'].parent = edit_bones['L_Knee']
+        edit_bones['R_Ankle'].parent = edit_bones['R_Knee']
+        edit_bones['Spine3'].parent = edit_bones['Spine2']
+        edit_bones['L_Foot'].parent = edit_bones['L_Ankle']
+        edit_bones['R_Foot'].parent = edit_bones['R_Ankle']
+        edit_bones['Neck'].parent = edit_bones['Spine3']
+        edit_bones['L_Collar'].parent = edit_bones['Spine3']
+        edit_bones['R_Collar'].parent = edit_bones['Spine3']
+        edit_bones['Head'].parent = edit_bones['Neck']
+        edit_bones['L_Shoulder'].parent = edit_bones['L_Collar']
+        edit_bones['R_Shoulder'].parent = edit_bones['R_Collar']
+        edit_bones['L_Elbow'].parent = edit_bones['L_Shoulder']
+        edit_bones['R_Elbow'].parent = edit_bones['R_Shoulder']
+        edit_bones['L_Wrist'].parent = edit_bones['L_Elbow']
+        edit_bones['R_Wrist'].parent = edit_bones['R_Elbow']
+        edit_bones['L_Hand'].parent = edit_bones['L_Wrist']
+        edit_bones['R_Hand'].parent = edit_bones['R_Wrist']
+
+        # Switch to pose mode
         bpy.ops.object.mode_set(mode='POSE')
 
-        # 设置动画帧范围
+        # Set animation frame range
         bpy.context.scene.frame_start = 0
         bpy.context.scene.frame_end = num_frames - 1
 
-        # 为每一帧创建关键帧
+        # Create keyframes for each frame
         print("Creating keyframes...")
         for frame_idx in range(num_frames):
             bpy.context.scene.frame_set(frame_idx)
             frame_data = motion_data[frame_idx]
 
-            for bone_idx in range(num_bones):
-                bone = armature.pose.bones[f'Bone_{bone_idx}']
+            for bone_idx, bone_name in enumerate(bone_names):
+                bone = armature.pose.bones[bone_name]
 
-                # 计算数据索引
-                pos_start = bone_idx * 6
-                pos_end = pos_start + 3
-                rot_start = pos_end
-                rot_end = rot_start + 3
+                # Calculate data indices (3 values per joint: x, y, z rotation)
+                start_idx = bone_idx * 3
+                end_idx = start_idx + 3
 
                 try:
-                    # 获取位置和旋转数据
-                    position = frame_data[pos_start:pos_end]
-                    rotation = frame_data[rot_start:rot_end]
+                    # Get rotation data
+                    rotation = frame_data[start_idx:end_idx]
 
-                    # 设置骨骼变换
-                    bone.location = Vector((
-                        float(position[0]),
-                        float(position[1]),
-                        float(position[2])
-                    ))
+                    # Set bone rotation
+                    bone.rotation_mode = 'XYZ'
+                    bone.rotation_euler = Euler(rotation)
 
-                    bone.rotation_euler = Euler((
-                        float(rotation[0]),
-                        float(rotation[1]),
-                        float(rotation[2])
-                    ))
-
-                    # 插入关键帧
-                    bone.keyframe_insert(data_path="location", frame=frame_idx)
+                    # Insert keyframe
                     bone.keyframe_insert(data_path="rotation_euler", frame=frame_idx)
                 except Exception as e:
-                    print(f"Error at frame {frame_idx}, bone {bone_idx}")
-                    print(f"Position data: {position}")
+                    print(f"Error at frame {frame_idx}, bone {bone_name}")
                     print(f"Rotation data: {rotation}")
                     raise e
 
             if frame_idx % 100 == 0:
                 print(f"Processed frame {frame_idx}/{num_frames}")
 
-        # 选择armature
+        # Select armature
         bpy.context.view_layer.objects.active = armature
         armature.select_set(True)
 
-        # 导出FBX
+        # Export FBX
         print("Exporting to FBX...")
         bpy.ops.export_scene.fbx(
             filepath=fbx_path,
@@ -128,6 +143,8 @@ def npy_to_fbx(npy_path, fbx_path):
         traceback.print_exc()
         raise
 
+
+# ... existing code ...
 
 def main():
     npy_path = r"D:\Work\virtualCAS3\dataset\GQS883\scene01_body_pose.npy"
