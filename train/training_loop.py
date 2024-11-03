@@ -124,8 +124,11 @@ class TrainLoop:
         # 运行训练循环
         for _ in range(self.num_epochs):
             if self.rank == 0:
-                prof = profile.Profile()
-                prof.enable()
+                try:
+                    prof = profile.Profile()
+                    prof.enable()
+                except ValueError as e:
+                    print(f"警告：无法启用 profiler。{str(e)}")
 
             for motion, cond in tqdm(self.data, disable=(self.rank != 0)):
                 if self.lr_anneal_steps and self.step + self.resume_step >= self.lr_anneal_steps:
@@ -142,10 +145,12 @@ class TrainLoop:
                 self.step += 1
 
                 if (self.step == 1000) and self.rank == 0:
-                    prof.disable()
-                    stats = pstats.Stats(prof).strip_dirs().sort_stats("cumtime")
-                    stats.print_stats(10)
-
+                    try:
+                        prof.disable()
+                        stats = pstats.Stats(prof).strip_dirs().sort_stats("cumtime")
+                        stats.print_stats(10)
+                    except Exception as e:
+                        print(f"警告：无法禁用或打印 profiler 统计信息。{str(e)}")
             if self.lr_anneal_steps and self.step + self.resume_step >= self.lr_anneal_steps:
                 break
 
