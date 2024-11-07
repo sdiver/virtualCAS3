@@ -49,6 +49,8 @@ def call_ffmpeg(command: str) -> None:
 
 
 class BodyRenderer(th.nn.Module):
+    # __init__
+    # 方法：初始化渲染器，加载配置、模型和默认参数。
     def __init__(
         self,
         config_base: str,
@@ -88,12 +90,16 @@ class BodyRenderer(th.nn.Module):
         person = get_person_num(config_path)
         self.default_inputs = th.load(f"assets/render_defaults_{person}.pth")
 
+    # _write_video_stream
+    # 方法：将渲染的帧写入视频流。
     def _write_video_stream(
         self, motion: np.ndarray, face: np.ndarray, save_name: str
     ) -> None:
         out = self._render_loop(motion, face)
         mediapy.write_video(save_name, out, fps=30)
 
+    # _render_loop
+    # 方法：渲染每一帧的动画。
     def _render_loop(self, body_pose: np.ndarray, face: np.ndarray) -> List[np.ndarray]:
         all_rgb = []
         default_inputs_copy = copy.deepcopy(self.default_inputs)
@@ -126,6 +132,8 @@ class BodyRenderer(th.nn.Module):
             all_rgb.append(rgb.contiguous().detach().byte().cpu().numpy())
         return all_rgb
 
+    # render_full_video
+    # 方法：渲染完整的视频，包括音频同步。
     def render_full_video(
         self,
         data_block: Dict[str, np.ndarray],

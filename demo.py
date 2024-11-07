@@ -349,8 +349,8 @@ demo = gr.Interface(
     [
         gr.Audio(sources=["microphone","upload"]),
         gr.Number(
-            value=3,
-            label="Number of Samples (default = 3)",
+            value=1,
+            label="Number of Samples (default = 1)",
             precision=0,
             minimum=1,
             maximum=10,
@@ -373,7 +373,7 @@ demo = gr.Interface(
         3) 指定您希望样本的多样性程度。这会调整核采样中的累积概率:0.01 = 低多样性,1.0 = 高多样性。 <br/>\
         4) 然后,坐下来等待渲染完成!这可能需要一段时间(例如30分钟) <br/>\
         5) 之后,您可以查看视频并下载您喜欢的视频。 <br/>",
-    article="相关链接: [项目页面](https://people.eecs.berkeley.edu/~evonne_ng/projects/audio2photoreal)",  # TODO: 代码和arxiv
+    article="相关链接: [项目页面](https://www.humanplus.xyz)",  # TODO: 代码和arxiv
 )
 
 if __name__ == "__main__":
