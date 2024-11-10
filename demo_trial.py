@@ -9,6 +9,7 @@ import torchaudio
 from attrdict import AttrDict
 from torch.utils.data import DataLoader
 from torch.quantization import quantize_dynamic
+from typing import Dict, Union, Tuple
 
 from diffusion.respace import SpacedDiffusion
 from model.cfg_sampler import ClassifierFreeSampleModel
@@ -23,19 +24,21 @@ class GradioModel:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.face_model, self.face_diffusion = self._setup_model(
             face_args, "checkpoints-bak/checkpoints-184/diffusion/c1_face/model000155000.pt"
-            # face_args, "checkpoints/diffusion/c1_face_test/model000155000.pt"
         )
         self.pose_model, self.pose_diffusion = self._setup_model(
             pose_args, "checkpoints-bak/checkpoints-184/diffusion/c1_pose/model000340000.pt"
-            # pose_args, "checkpoints/diffusion/c1_pose_test/model000340000.pt"
         )
 
-        # Load and move stats to device
-        stats = torch.load("dataset/PXB184/data_stats.pth", map_location=self.device)
-        stats["pose_mean"] = stats["pose_mean"].reshape(-1)
-        stats["pose_std"] = stats["pose_std"].reshape(-1)
-        self.stats = stats
-        # 设置渲染器
+        # Load stats and move to the correct device
+        # stats = torch.load("dataset/PXB184/data_stats.pth", map_location=self.device)
+        # stats["pose_mean"] = stats["pose_mean"].reshape(-1).to(self.device)
+        # stats["pose_std"] = stats["pose_std"].reshape(-1).to(self.device)
+        # stats["audio_mean"] = stats["audio_mean"].to(self.device)
+        # stats["audio_std_flat"] = stats["audio_std_flat"].to(self.device)
+        # stats["code_mean"] = stats["code_mean"].to(self.device)
+        # stats["code_std"] = stats["code_std"].to(self.device)
+        # self.stats = stats
+
         config_base = f"./checkpoints-bak/checkpoints-184/PXB184"
         self.body_renderer = BodyRenderer(config_base=config_base, render_rgb=True)
 
@@ -51,6 +54,7 @@ class GradioModel:
             args.resume_trans = "checkpoints-bak/checkpoints-184/guide/c1_pose/checkpoints/iter-0100000.pt"
 
         model, diffusion = create_model_and_diffusion(args, split_type="test")
+        print(f"Loading checkpoints from [{args.model_path}]...")
         state_dict = torch.load(args.model_path, map_location=self.device)
         load_model(model, state_dict)
         model = ClassifierFreeSampleModel(model)
@@ -61,7 +65,17 @@ class GradioModel:
         model = quantize_dynamic(model, {torch.nn.Linear})
 
         # Use JIT compilation
-        model = torch.jit.script(model)
+        # model = torch.jit.script(model)
+        # Load stats and move to the correct device
+        stats = torch.load("dataset/PXB184/data_stats.pth", map_location=self.device)
+        self.stats = {
+            "pose_mean": torch.from_numpy(stats["pose_mean"]).reshape(-1).to(self.device),
+            "pose_std": torch.from_numpy(stats["pose_std"]).reshape(-1).to(self.device),
+            "audio_mean": torch.from_numpy(stats["audio_mean"]).to(self.device),
+            "audio_std_flat": torch.from_numpy(stats["audio_std_flat"]).to(self.device),
+            "code_mean": torch.from_numpy(stats["code_mean"]).to(self.device),
+            "code_std": torch.from_numpy(stats["code_std"]).to(self.device)
+        }
 
         return model, diffusion
 
@@ -132,9 +146,14 @@ def generate_results(audio: np.ndarray, num_repetitions: int, top_p: float):
     if audio is None:
         raise gr.Error("Please record audio to start")
     sr, y = audio
-    y = torch.tensor(y, device=gradio_model.device)
+
+    # Convert to float32 and normalize
+    y = torch.tensor(y, dtype=torch.float32, device=gradio_model.device)
+    y = y / torch.max(torch.abs(y))
+
     if y.dim() == 2:
         y = torch.mean(y, dim=0 if y.shape[0] == 2 else 1)
+
     y = torchaudio.functional.resample(y, orig_freq=sr, new_freq=48_000)
     sr = 48_000
     if len(y) < (sr * 4):
@@ -147,26 +166,39 @@ def generate_results(audio: np.ndarray, num_repetitions: int, top_p: float):
     curr_seq_length = int(len(y) / sr) * 30
     model_kwargs = {"y": {}}
     dual_audio = torch.randn(1, len(y), 2, device=gradio_model.device) * 0.001
-    dual_audio[:, :, 0] = y / y.max()
-    dual_audio = (dual_audio - gradio_model.stats["audio_mean"]) / gradio_model.stats["audio_std_flat"]
+    dual_audio[:, :, 0] = y
+
+    # Move stats to the same device as dual_audio
+    audio_mean = gradio_model.stats["audio_mean"]
+    audio_std_flat = gradio_model.stats["audio_std_flat"]
+
+    dual_audio = (dual_audio - audio_mean) / audio_std_flat
     model_kwargs["y"]["audio"] = dual_audio.float().repeat(num_repetitions, 1, 1)
 
     face_results = gradio_model.generate_sequences(model_kwargs, "face", curr_seq_length,
                                                    num_repetitions=int(num_repetitions))
     face_results = face_results.squeeze(2).transpose(0, 2, 1)
-    face_results = face_results * gradio_model.stats["code_std"].cpu().numpy() + gradio_model.stats[
-        "code_mean"].cpu().numpy()
+
+    # Move stats to CPU for numpy operations
+    code_std = gradio_model.stats["code_std"].cpu().numpy()
+    code_mean = gradio_model.stats["code_mean"].cpu().numpy()
+    face_results = face_results.cpu().numpy() * code_std + code_mean
 
     pose_results = gradio_model.generate_sequences(model_kwargs, "pose", curr_seq_length,
                                                    num_repetitions=int(num_repetitions), guidance_param=2.0,
                                                    top_p=top_p)
     pose_results = pose_results.squeeze(2).transpose(0, 2, 1)
-    pose_results = pose_results * gradio_model.stats["pose_std"].cpu().numpy() + gradio_model.stats[
-        "pose_mean"].cpu().numpy()
 
-    dual_audio = dual_audio * gradio_model.stats["audio_std_flat"].cpu().numpy() + gradio_model.stats[
-        "audio_mean"].cpu().numpy()
-    return face_results, pose_results, dual_audio[0].transpose(1, 0).cpu().numpy().astype(np.float32)
+    # Move stats to CPU for numpy operations
+    pose_std = gradio_model.stats["pose_std"].cpu().numpy()
+    pose_mean = gradio_model.stats["pose_mean"].cpu().numpy()
+    pose_results = pose_results.cpu().numpy() * pose_std + pose_mean
+
+    # Move dual_audio to CPU for final numpy operations
+    dual_audio = dual_audio.cpu()
+    dual_audio = dual_audio * audio_std_flat.cpu().numpy() + audio_mean.cpu().numpy()
+
+    return face_results, pose_results, dual_audio[0].transpose(1, 0).numpy().astype(np.float32)
 
 
 def audio_to_avatar(audio: np.ndarray, num_repetitions: int, top_p: float):

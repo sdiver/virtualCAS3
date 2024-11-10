@@ -29,7 +29,7 @@ class GradioModel:
         # 初始化面部模型和姿势模型
         self.face_model, self.face_diffusion, self.device = self._setup_model(
             face_args, "checkpoints-bak/checkpoints-184/diffusion/c1_face/model000155000.pt"
-            # face_args, "checkpoints/diffusion/c1_face_test/model000155000.pt"
+            # face_args, "checkpoints/diffusion/c1_face/model000025000.pt"
         )
         self.pose_model, self.pose_diffusion, _ = self._setup_model(
             pose_args, "checkpoints-bak/checkpoints-184/diffusion/c1_pose/model000340000.pt"
@@ -258,9 +258,16 @@ def generate_results(audio: np.ndarray, num_repetitions: int, top_p: float):
     curr_seq_length = int(len(y) / sr) * 30
     # 创建模型输入参数
     model_kwargs = {"y": {}}
+    # dual_audio = np.random.normal(0, 0.001, (1, len(y), 2))
+    # # dual_audio[:, :, 0] = y.copy_() / max(y)
+    # dual_audio[:, :, 0] = torch.from_numpy(y) / torch.max(torch.abs(torch.from_numpy(y)))
+    # # 标准化音频数据
+    # dual_audio = (dual_audio - gradio_model.stats["audio_mean"]) / gradio_model.stats[
+    #     "audio_std_flat"
+    # ]
     dual_audio = np.random.normal(0, 0.001, (1, len(y), 2))
-    dual_audio[:, :, 0] = y / max(y)
-    # 标准化音频数据
+    dual_audio[:, :, 0] = y.detach().cpu().numpy() / np.max(np.abs(y.detach().cpu().numpy()))
+    # Normalize audio data
     dual_audio = (dual_audio - gradio_model.stats["audio_mean"]) / gradio_model.stats[
         "audio_std_flat"
     ]
@@ -337,8 +344,8 @@ def audio_to_avatar(audio: np.ndarray, num_repetitions: int, top_p: float):
 
 # 初始化Gradio模型
 gradio_model = GradioModel(
-    face_args="./checkpoints-bak/checkpoints-184/diffusion/c1_face/args.json",
-    # face_args="./checkpoints/diffusion/c1_face_test/args.json",
+    # face_args="./checkpoints-bak/checkpoints-184/diffusion/c1_face/args.json",
+    face_args="./checkpoints/diffusion/c1_face/args.json",
     pose_args="./checkpoints-bak/checkpoints-184/diffusion/c1_pose/args.json",
     # pose_args="./checkpoints/diffusion/c1_pose_test/args.json",
 )
