@@ -39,9 +39,6 @@ class GradioModel:
         stats = torch.load("dataset/PXB184/data_stats.pth")
         stats["pose_mean"] = stats["pose_mean"].reshape(-1)
         stats["pose_std"] = stats["pose_std"].reshape(-1)
-        print("---------------stats----------------------")
-        print(stats)
-        print("---------------stats----------------------")
         self.stats = stats
         # 设置渲染器
         config_base = f"./checkpoints-bak/checkpoints-184/PXB184"
