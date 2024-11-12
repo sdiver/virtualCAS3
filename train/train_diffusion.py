@@ -8,7 +8,7 @@ Face diffusion model
 
 import json
 import os
-
+import time
 import torch
 import torch.multiprocessing as mp
 
@@ -54,7 +54,9 @@ def main(rank: int, world_size: int):
         if args.save_dir is None:
             raise FileNotFoundError("save_dir was not specified.")
         elif os.path.exists(args.save_dir) and not args.overwrite:
-            raise FileExistsError("save_dir [{}] already exists.".format(args.save_dir))
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            args.save_dir = f"{args.save_dir}_{timestamp}"
+            raise FileExistsError("save_dir [{}] already exists., saving to new directory:".format(args.save_dir))
         elif not os.path.exists(args.save_dir):
             os.makedirs(args.save_dir)
         args_path = os.path.join(args.save_dir, "args.json")

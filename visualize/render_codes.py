@@ -61,13 +61,18 @@ class BodyRenderer(th.nn.Module):
         ckpt_path = f"{config_base}/body_dec.ckpt"
         config_path = f"{config_base}/config.yml"
         assets_path = f"{config_base}/static_assets.pt"
-        # config
+
+# 加载主配置文件
+# config_path: 包含模型和训练的整体配置信息
         config = OmegaConf.load(config_path)
         gpu = config.get("gpu", 0)
         self.device = th.device(f"cuda:{gpu}")
-        # assets
+
+# 加载静态资产
+# assets_path: 包含模型所需的静态数据，如预定义的形状、纹理等
         static_assets = AttrDict(torch.load(assets_path))
-        # build model
+
+# 根据配置构建模型
         self.model = load_from_config(config.model, assets=static_assets).to(
             self.device
         )
@@ -77,7 +82,9 @@ class BodyRenderer(th.nn.Module):
         self.render_rgb = render_rgb
         if not self.render_rgb:
             self.model.rendering_enabled = None
-        # load model checkpoints
+
+# 加载模型检查点
+# ckpt_path: 包含预训练模型的权重
         print("loading...", ckpt_path)
         load_checkpoint(
             ckpt_path,
@@ -86,7 +93,9 @@ class BodyRenderer(th.nn.Module):
         )
         self.model.eval()
         self.model.to(self.device)
-        # load default parameters for renderer
+
+# 加载渲染器的默认参数
+# 这个文件包含特定人物的渲染默认参数
         person = get_person_num(config_path)
         self.default_inputs = th.load(f"assets/render_defaults_{person}.pth")
 
