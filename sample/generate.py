@@ -170,7 +170,7 @@ def _render_pred(
     config_base = f"./checkpoints/ca_body/data/{get_person_num(args.data_root)}"
     body_renderer = BodyRenderer(
         config_base=config_base,
-        render_rgb=False,
+        render_rgb=True,
     )
 
     for sample_i in range(args.num_samples):

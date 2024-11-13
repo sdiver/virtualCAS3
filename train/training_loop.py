@@ -56,19 +56,30 @@ class TrainLoop:
         self.world_size = world_size
 
         # 初始化步骤计数器和相关变量
-        self.step = 0
-        self.resume_step = 0
-        self.global_batch = self.batch_size
-        self.num_steps = args.num_steps
-        self.num_epochs = self.num_steps // len(self.data) + 1
+        self.step = 0  # 当前训练步骤
+        self.resume_step = 0  # 恢复训练时的起始步骤
+        self.global_batch = self.batch_size  # 全局批次大小
+        self.num_steps = args.num_steps  # 总训练步数
+        self.num_epochs = self.num_steps // len(self.data) + 1  # 计算总训练轮数
+
+        # 创建用于记录和评估的步骤列表
         self.chunks = np.reshape(np.array_split(range(self.num_steps), int(self.num_steps / 10))[10_000::10], (-1))
+
+        # 检查是否可以使用CUDA进行同步
         self.sync_cuda = torch.cuda.is_available()
+
+        # TensorBoard写入器
         self.writer = writer
 
         # 加载和同步模型参数
         self._load_and_sync_parameters()
-        self.mp_trainer = MixedPrecisionTrainer(model=self.model, use_fp16=False, fp16_scale_growth=1e-3)
 
+        # 创建混合精度训练器
+        self.mp_trainer = MixedPrecisionTrainer(
+            model=self.model,
+            use_fp16=False,  # 不使用FP16
+            fp16_scale_growth=1e-3  # FP16缩放增长率
+        )
         # 设置保存目录和覆盖选项
         self.save_dir = args.save_dir
         self.overwrite = args.overwrite
