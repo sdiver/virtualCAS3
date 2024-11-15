@@ -15,6 +15,7 @@ https://github.com/GuyTevet/motion-diffusion-model/blob/main/LICENSE
 import numpy as np
 import torch as th
 
+from torch.nn.parallel import DistributedDataParallel as DDP
 from .gaussian_diffusion import GaussianDiffusion
 
 
@@ -132,10 +133,15 @@ class _WrappedModel:
         self.model = model
         if hasattr(model, "step"):
             self.step = model.step
-        self.add_frame_cond = model.add_frame_cond
+        # self.add_frame_cond = model.add_frame_cond
         self.timestep_map = timestep_map
         self.rescale_timesteps = rescale_timesteps
         self.original_num_steps = original_num_steps
+        # Handle DDP-wrapped models
+        if isinstance(model, DDP):
+            self.add_frame_cond = model.module.add_frame_cond
+        else:
+            self.add_frame_cond = model.add_frame_cond
 
     def __call__(self, x, ts, **kwargs):
         map_tensor = th.tensor(self.timestep_map, device=ts.device, dtype=ts.dtype)

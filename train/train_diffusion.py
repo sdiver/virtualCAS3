@@ -8,7 +8,6 @@ Face diffusion model
 
 import json
 import os
-import time
 import torch
 import torch.multiprocessing as mp
 
@@ -45,7 +44,7 @@ def main(rank: int, world_size: int):
     train_platform_type = eval(args.train_platform_type)
     train_platform = train_platform_type(args.save_dir)
     train_platform.report_args(args, name="Args")
-    setup_dist(args.device)
+    setup_dist(rank, world_size,args.device)
     """
     3\主进程特权处理
     只有在rank为0时处理保存路径，确保保存路径存在且没有被覆盖。 
@@ -54,7 +53,7 @@ def main(rank: int, world_size: int):
         if args.save_dir is None:
             raise FileNotFoundError("save_dir was not specified.")
         elif os.path.exists(args.save_dir) and not args.overwrite:
-            raise FileExistsError("save_dir [{}] already exists.".format(args.save_dir))
+            raise FileExistsError("save_dir [{}] already exists., saving to new directory:".format(args.save_dir))
         elif not os.path.exists(args.save_dir):
             os.makedirs(args.save_dir)
         args_path = os.path.join(args.save_dir, "args.json")
@@ -81,7 +80,6 @@ def main(rank: int, world_size: int):
     print("creating model and diffusion...")
     model, diffusion = create_model_and_diffusion(args, split_type="train")
     model.to(rank)
-
     if world_size > 1:
         model = DDP(
             model, device_ids=[rank], output_device=rank, find_unused_parameters=True

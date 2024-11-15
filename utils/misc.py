@@ -31,14 +31,14 @@ def setup(rank, world_size):
     os.environ["MASTER_PORT"] = "12355"
 
     # initialize the process group
-    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+    dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)
 
 
 def cleanup():
     dist.destroy_process_group()
 
 
-def setup_dist(device=0):
+def setup_dist(rank, world_size, device=0):
     """
     Set up a distributed process group.
     """
@@ -46,6 +46,13 @@ def setup_dist(device=0):
     used_device = device
     if dist.is_initialized():
         return
+
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+
+    dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)
+    torch.cuda.set_device(device)
+
 
 def dev():
     """
