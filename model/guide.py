@@ -155,20 +155,20 @@ class GuideTransformer(nn.Module):
         cond_tokens = self.cond_projection(cond_tokens)
         cond_tokens = self.abs_pos_encoding(cond_tokens)
 
-        # null_cond_embed = self.null_cond_embed.to(cond_tokens.dtype)
+        null_cond_embed = self.null_cond_embed.to(cond_tokens.dtype)
 
 
         # 对齐null cond embed 的维度
 
-        if self.null_cond_embed.shape[1] < cond_tokens.shape[1]:
-            padding_size = cond_tokens.shape[1] - self.null_cond_embed.shape[1]
-            # 通过填充零的方式扩展 null_cond_embed
-            null_cond_embed = torch.cat([
-                self.null_cond_embed,
-                torch.zeros(1, padding_size, self.null_cond_embed.shape[2]).to(self.null_cond_embed.device)
-            ], dim=1)
+        # if self.null_cond_embed.shape[1] < cond_tokens.shape[1]:
+        #     padding_size = cond_tokens.shape[1] - self.null_cond_embed.shape[1]
+        #     # 通过填充零的方式扩展 null_cond_embed
+        #     null_cond_embed = torch.cat([
+        #         self.null_cond_embed,
+        #         torch.zeros(1, padding_size, self.null_cond_embed.shape[2]).to(self.null_cond_embed.device)
+        #     ], dim=1)
 
-        null_cond_embed = null_cond_embed.to(cond_tokens.dtype)
+        # null_cond_embed = null_cond_embed.to(cond_tokens.dtype)
 
         cond_tokens = torch.where(
             keep_mask_embed, cond_tokens, null_cond_embed[:, : cond_tokens.shape[1], :]

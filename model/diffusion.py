@@ -327,19 +327,19 @@ class FiLMTransformer(nn.Module):
             (batch_size,), 1 - key_cond_drop_prob, device=pose_tokens.device
         )
         keep_mask_pose_embed = rearrange(keep_mask_pose, "b -> b 1 1")
-        # null_pose_embed = self.null_pose_embed.to(pose_tokens.dtype)
+        null_pose_embed = self.null_pose_embed.to(pose_tokens.dtype)
 
-        # 对齐null cond embed 的维度
-
-        if self.null_pose_embed.shape[1] < pose_tokens.shape[1]:
-            padding_size = pose_tokens.shape[1] - self.null_pose_embed.shape[1]
-            # 通过填充零的方式扩展 null_cond_embed
-            null_pose_embed = torch.cat([
-                self.null_cond_embed,
-                torch.zeros(1, padding_size, self.null_cond_embed.shape[2]).to(self.null_cond_embed.device)
-            ], dim=1)
-
-        null_pose_embed = null_pose_embed.to(pose_tokens.dtype)
+        # # 对齐null cond embed 的维度
+        #
+        # if self.null_pose_embed.shape[1] < pose_tokens.shape[1]:
+        #     padding_size = pose_tokens.shape[1] - self.null_pose_embed.shape[1]
+        #     # 通过填充零的方式扩展 null_cond_embed
+        #     null_pose_embed = torch.cat([
+        #         self.null_cond_embed,
+        #         torch.zeros(1, padding_size, self.null_cond_embed.shape[2]).to(self.null_cond_embed.device)
+        #     ], dim=1)
+        #
+        # null_pose_embed = null_pose_embed.to(pose_tokens.dtype)
 
         pose_tokens = torch.where(
             keep_mask_pose_embed,
@@ -386,36 +386,37 @@ class FiLMTransformer(nn.Module):
         cond_tokens = self.abs_pos_encoding(cond_tokens)
         if self.data_format == "face":
             cond_tokens = self.cond_encoder(cond_tokens)
-        # 填充或复制 null_cond_embed 使其匹配 cond_tokens 的长度
-        if self.null_cond_embed.shape[1] < cond_tokens.shape[1]:
-            padding_size = cond_tokens.shape[1] - self.null_cond_embed.shape[1]
-            # 通过填充零的方式扩展 null_cond_embed
-            null_cond_embed = torch.cat([
-                self.null_cond_embed,
-                torch.zeros(1, padding_size, self.null_cond_embed.shape[2]).to(self.null_cond_embed.device)
-            ], dim=1)
-
-        null_cond_embed = null_cond_embed.to(cond_tokens.dtype)
-        # 打印 cond_tokens 及其形状
-        print("cond_tokens shape:", cond_tokens.shape)
-
-        # 打印 keep_mask_embed 及其形状
-        print("keep_mask_embed shape:", keep_mask_embed.shape)
-
-        # 打印 null_cond_embed 的原始形状及切片后的形状
-        print("null_cond_embed original shape:", null_cond_embed.shape)
-        print("null_cond_embed[:, : cond_tokens.shape[1], :] shape:",
-              null_cond_embed[:, : cond_tokens.shape[1], :].shape)
-
-        # 打印 keep_mask_embed 是否与 cond_tokens 和 null_cond_embed 匹配
-        keep_mask_embed_shape = keep_mask_embed.shape
-        cond_tokens_shape = cond_tokens.shape
-        null_cond_embed_shape = null_cond_embed[:, : cond_tokens.shape[1], :].shape
-
-        # 检查所有张量在 torch.where 中的兼容性
-        print("keep_mask_embed shape for torch.where:", keep_mask_embed_shape)
-        print("cond_tokens shape for torch.where:", cond_tokens_shape)
-        print("null_cond_embed shape for torch.where:", null_cond_embed_shape)
+        null_cond_embed = self.null_cond_embed.to(cond_tokens.dtype)
+        # # 填充或复制 null_cond_embed 使其匹配 cond_tokens 的长度
+        # if self.null_cond_embed.shape[1] < cond_tokens.shape[1]:
+        #     padding_size = cond_tokens.shape[1] - self.null_cond_embed.shape[1]
+        #     # 通过填充零的方式扩展 null_cond_embed
+        #     null_cond_embed = torch.cat([
+        #         self.null_cond_embed,
+        #         torch.zeros(1, padding_size, self.null_cond_embed.shape[2]).to(self.null_cond_embed.device)
+        #     ], dim=1)
+        #
+        # null_cond_embed = null_cond_embed.to(cond_tokens.dtype)
+        # # 打印 cond_tokens 及其形状
+        # print("cond_tokens shape:", cond_tokens.shape)
+        #
+        # # 打印 keep_mask_embed 及其形状
+        # print("keep_mask_embed shape:", keep_mask_embed.shape)
+        #
+        # # 打印 null_cond_embed 的原始形状及切片后的形状
+        # print("null_cond_embed original shape:", null_cond_embed.shape)
+        # print("null_cond_embed[:, : cond_tokens.shape[1], :] shape:",
+        #       null_cond_embed[:, : cond_tokens.shape[1], :].shape)
+        #
+        # # 打印 keep_mask_embed 是否与 cond_tokens 和 null_cond_embed 匹配
+        # keep_mask_embed_shape = keep_mask_embed.shape
+        # cond_tokens_shape = cond_tokens.shape
+        # null_cond_embed_shape = null_cond_embed[:, : cond_tokens.shape[1], :].shape
+        #
+        # # 检查所有张量在 torch.where 中的兼容性
+        # print("keep_mask_embed shape for torch.where:", keep_mask_embed_shape)
+        # print("cond_tokens shape for torch.where:", cond_tokens_shape)
+        # print("null_cond_embed shape for torch.where:", null_cond_embed_shape)
 
         cond_tokens = torch.where(
             keep_mask_embed, cond_tokens, null_cond_embed[:, : cond_tokens.shape[1], :]
