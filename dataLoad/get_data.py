@@ -52,6 +52,9 @@ def _load_pose_data(
     audio = []
     lengths = []
     missing = []
+    # New list for text data
+    transcripts = []
+    emotions = []
     for _, curr_path_name in enumerate(all_paths):
         if not curr_path_name.endswith("_body_pose.npy"):
             continue

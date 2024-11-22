@@ -46,12 +46,14 @@ class Audio2LipRegressionTransformer(torch.nn.Module):
         super().__init__()
         self.n_vertices = n_vertices
 
+        # 音频编码器
         self.audio_encoder = Wav2VecEncoder()
         if not train_wav2vec:
             self.audio_encoder.eval()
             for param in self.audio_encoder.parameters():
                 param.requires_grad = False
 
+        # 回归模型
         self.regression_model = RegressionTransformer(
             transformer_encoder_layers=transformer_encoder_layers,
             transformer_decoder_layers=transformer_decoder_layers,
@@ -60,6 +62,7 @@ class Audio2LipRegressionTransformer(torch.nn.Module):
             num_heads=4,
             causal=causal,
         )
+        # 输出投影层
         self.project_output = torch.nn.Linear(512, self.n_vertices * 3)
 
     def forward(self, audio):
@@ -69,12 +72,17 @@ class Audio2LipRegressionTransformer(torch.nn.Module):
         """
         B, T = audio.shape[0], audio.shape[1]
 
+        # 编码音频
         cond = self.audio_encoder(audio)
 
+        # 生成初始输入
         x = torch.zeros(B, T, 512, device=audio.device)
+        # 通过回归模型
         x = self.regression_model(x, cond)
+        # 投影输出
         x = self.project_output(x)
 
+        # 重塑输出为顶点坐标
         verts = x.view(B, T, self.n_vertices, 3)
         return verts
 
@@ -98,18 +106,28 @@ class FiLMTransformer(nn.Module):
         **kwargs,
     ) -> None:
         super().__init__()
+
+        # 新增：情感编码器
+        self.emotion_encoder = nn.Sequential(
+            nn.Linear(args.emotion_dim, latent_dim),
+            nn.ReLU(),
+            nn.Linear(latent_dim, latent_dim)
+        )
+        # 更新条件特征维度以包含情感
+        self.cond_feature_dim = cond_feature_dim + latent_dim
+
         self.nfeats = nfeats
         self.cond_mode = cond_mode
-        self.cond_feature_dim = cond_feature_dim
+        # self.cond_feature_dim = cond_feature_dim
         self.add_frame_cond = args.add_frame_cond
         self.data_format = args.data_format
         self.split_type = split_type
         self.device = device
 
-        # positional embeddings
+        # 位置编码
         self.rotary = None
         self.abs_pos_encoding = nn.Identity()
-        # if rotary, replace absolute embedding with a rotary embedding instance (absolute becomes an identity)
+        # 如果使用旋转位置编码，替换绝对位置编码
         if use_rotary:
             self.rotary = RotaryEmbedding(dim=latent_dim)
         else:
@@ -117,7 +135,7 @@ class FiLMTransformer(nn.Module):
                 latent_dim, dropout, batch_first=True
             )
 
-        # time embedding processing
+        # 时间嵌入处理
         self.time_mlp = nn.Sequential(
             SinusoidalPosEmb(latent_dim),
             nn.Linear(latent_dim, latent_dim * 4),
@@ -131,15 +149,15 @@ class FiLMTransformer(nn.Module):
             Rearrange("b (r d) -> b r d", r=2),
         )
 
-        # null embeddings for guidance dropout
+        # 用于指导dropout的空嵌入
         self.seq_len = args.max_seq_length
-        emb_len = 1998  # hardcoded for now
+        emb_len = 1998  # 暂时硬编码
         self.null_cond_embed = nn.Parameter(torch.randn(1, emb_len, latent_dim))
         self.null_cond_hidden = nn.Parameter(torch.randn(1, latent_dim))
         self.norm_cond = nn.LayerNorm(latent_dim)
         self.setup_audio_models()
 
-        # set up pose/face specific parts of the model
+        # 设置姿势/面部特定的模型部分
         self.input_projection = nn.Linear(self.nfeats, latent_dim)
         if self.data_format == "pose":
             cond_feature_dim = 1024
@@ -170,7 +188,8 @@ class FiLMTransformer(nn.Module):
                 )
             self.cond_encoder.apply(init_weight)
 
-        self.cond_projection = nn.Linear(cond_feature_dim, latent_dim)
+        # 更新条件投影以适应新的维度
+        self.cond_projection = nn.Linear(self.cond_feature_dim, latent_dim)
         self.non_attn_cond_projection = nn.Sequential(
             nn.LayerNorm(latent_dim),
             nn.Linear(latent_dim, latent_dim),
@@ -178,7 +197,7 @@ class FiLMTransformer(nn.Module):
             nn.Linear(latent_dim, latent_dim),
         )
 
-        # decoder
+        # 解码器
         decoderstack = nn.ModuleList([])
         for _ in range(num_layers):
             decoderstack.append(
@@ -199,6 +218,7 @@ class FiLMTransformer(nn.Module):
         self.final_layer.apply(init_weight)
 
     def _build_single_pose_conv(self, nfeats: int) -> nn.ModuleList:
+        # 构建单个姿势的卷积层
         post_pose_layers = torch.nn.ModuleList(
             [
                 torch.nn.Conv1d(nfeats, max(256, nfeats), kernel_size=3, dilation=1),
@@ -212,19 +232,20 @@ class FiLMTransformer(nn.Module):
         return post_pose_layers
 
     def _run_single_pose_conv(self, output: torch.Tensor) -> torch.Tensor:
+        # 运行单个姿势的卷积层
         output = torch.nn.functional.pad(output, pad=[self.receptive_field - 1, 0])
         for _, layer in enumerate(self.post_pose_layers):
             y = torch.nn.functional.leaky_relu(layer(output), negative_slope=0.2)
             if self.split_type == "train":
                 y = torch.nn.functional.dropout(y, 0.2)
             if output.shape[1] == y.shape[1]:
-                output = (output[:, :, -y.shape[-1] :] + y) / 2.0  # skip connection
+                output = (output[:, :, -y.shape[-1] :] + y) / 2.0  # 跳跃连接
             else:
                 output = y
         return output
 
     def setup_guide_models(self, args, latent_dim: int, key_feature_dim: int) -> None:
-        # set up conditioning info
+        # 设置指导模型
         max_keyframe_len = len(list(range(self.seq_len))[:: self.step])
         self.null_pose_embed = nn.Parameter(
             torch.randn(1, max_keyframe_len, latent_dim)
@@ -232,7 +253,7 @@ class FiLMTransformer(nn.Module):
         prGreen(f"using keyframes: {self.null_pose_embed.shape}")
         self.frame_cond_projection = nn.Linear(key_feature_dim, latent_dim)
         self.frame_norm_cond = nn.LayerNorm(latent_dim)
-        # for test time set up keyframe transformer
+        # 为测试时设置关键帧转换器
         self.resume_trans = None
         if self.split_type == "test":
             if hasattr(args, "resume_trans") and args.resume_trans is not None:
@@ -242,14 +263,15 @@ class FiLMTransformer(nn.Module):
                 prRed("not using transformer, just using ground truth")
 
     def setup_guide_predictor(self, cp_path: str) -> None:
+        # 设置指导预测器
         cp_dir = cp_path.split("checkpoints/iter-")[0]
         with open(f"{cp_dir}/args.json") as f:
             trans_args = json.load(f)
 
-        # set up tokenizer based on trans_arg load point
+        # 根据转换参数加载点设置标记器
         self.tokenizer = setup_tokenizer(trans_args["resume_pth"])
 
-        # set up transformer
+        # 设置转换器
         self.transformer = GuideTransformer(
             tokens=self.tokenizer.n_clusters,
             num_layers=trans_args["layers"],
@@ -268,9 +290,11 @@ class FiLMTransformer(nn.Module):
         assert len(unexpected_keys) == 0, unexpected_keys
 
     def setup_audio_models(self) -> None:
+        # 设置音频模型
         self.audio_model, self.audio_resampler = setup_lip_regressor()
 
     def setup_lip_models(self) -> None:
+        # 设置唇部模型
         self.lip_model = Audio2LipRegressionTransformer()
         cp_path = "./assets/iter-0200000.pt"
         cp = torch.load(cp_path, map_location=torch.device(self.device))
@@ -280,9 +304,11 @@ class FiLMTransformer(nn.Module):
         prGreen(f"adding lip conditioning {cp_path}")
 
     def parameters_w_grad(self):
+        # 返回具有梯度的参数
         return [p for p in self.parameters() if p.requires_grad]
 
-    def encode_audio(self, raw_audio: torch.Tensor) -> torch.Tensor:
+    def encode_audio(self, raw_audio: torch.Tensor, emotion: torch.Tensor) -> torch.Tensor:
+        # 编码音频
         device = next(self.parameters()).device
         a0 = self.audio_resampler(raw_audio[:, :, 0].to(device))
         a1 = self.audio_resampler(raw_audio[:, :, 1].to(device))
@@ -290,11 +316,17 @@ class FiLMTransformer(nn.Module):
             z0 = self.audio_model.feature_extractor(a0)
             z1 = self.audio_model.feature_extractor(a1)
             emb = torch.cat((z0, z1), axis=1).permute(0, 2, 1)
+        # 编码情感
+        emotion_embedding = self.emotion_encoder(emotion)
+        # 将情感嵌入添加到音频嵌入中
+        emb = torch.cat((emb, emotion_embedding.unsqueeze(1).repeat(1, emb.shape[1], 1)), dim=-1)
+
         return emb
 
     def encode_lip(self, audio: torch.Tensor, cond_embed: torch.Tensor) -> torch.Tensor:
+        # 编码唇部
         reshaped_audio = audio.reshape((audio.shape[0], -1, 1600, 2))[..., 0]
-        # processes 4 seconds at a time
+        # 每次处理4秒
         B, T, _ = reshaped_audio.shape
         lip_cond = torch.zeros(
             (audio.shape[0], T, 338, 3),
@@ -366,7 +398,9 @@ class FiLMTransformer(nn.Module):
             )
         else:
             cond_embed = y["audio"]
-            cond_embed = self.encode_audio(cond_embed)
+            emotion = y["emotion"]
+            # 假设情感标签在 y 字典中
+            cond_embed = self.encode_audio(cond_embed, emotion)
             if self.data_format == "face":
                 cond_embed = self.encode_lip(y["audio"], cond_embed)
                 pose_tokens = None

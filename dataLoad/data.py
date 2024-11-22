@@ -158,6 +158,7 @@ class Social(data.Dataset):
         self.audio_mean = stats["audio_mean"]
         self.audio_std = stats["audio_std_flat"]
 
+#分割数据
     def _chunk_data(self) -> None:
         chunk_data = []
         chunk_missing = []
