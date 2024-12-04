@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
-from colorama import init, Fore, Back, Style
+
 from model.guide import GuideTransformer
 from model.modules.audio_encoder import Wav2VecEncoder
 from model.modules.rotary_embedding_torch import RotaryEmbedding
@@ -115,7 +115,6 @@ class FiLMTransformer(nn.Module):
             nn.Linear(latent_dim, latent_dim)
         )
         # # 更新条件特征维度以包含情感
-        self.cond_feature_dim = cond_feature_dim + latent_dim
 
         self.nfeats = nfeats
         self.cond_mode = cond_mode
@@ -125,6 +124,15 @@ class FiLMTransformer(nn.Module):
         self.split_type = split_type
         self.device = device
 
+        # 打印初始的条件特征维度
+        if self.data_format == "pose":
+            self.cond_feature_dim = cond_feature_dim + latent_dim
+            print(f"Pose data format - Updated cond_feature_dim: {self.cond_feature_dim}")
+
+        elif self.data_format == "face":
+            self.cond_feature_dim = cond_feature_dim + latent_dim + ff_size
+            print(f"Face data format - Updated cond_feature_dim: {self.cond_feature_dim}")
+            print(f"Added ff_size: {ff_size}")
         # 位置编码
         self.rotary = None
         self.abs_pos_encoding = nn.Identity()
@@ -311,13 +319,14 @@ class FiLMTransformer(nn.Module):
     def encode_audio(self, raw_audio: torch.Tensor, emotion: torch.Tensor) -> torch.Tensor:
         # 编码音频
         device = next(self.parameters()).device
+        emotion = emotion.to(device)
         a0 = self.audio_resampler(raw_audio[:, :, 0].to(device))
         a1 = self.audio_resampler(raw_audio[:, :, 1].to(device))
         with torch.no_grad():
             z0 = self.audio_model.feature_extractor(a0)
             z1 = self.audio_model.feature_extractor(a1)
             emb = torch.cat((z0, z1), axis=1).permute(0, 2, 1)
-
+        self.emotion_encoder = self.emotion_encoder.to(device)
         # 编码情感
         emotion = emotion.float()
 
@@ -325,19 +334,19 @@ class FiLMTransformer(nn.Module):
             emotion = emotion.unsqueeze(0)  # 添加批次维度
         elif emotion.dim() == 3:
             emotion = emotion.squeeze(1)  # 从 [B, 1, D] 变为 [B, D]
-
         emotion_embedding = self.emotion_encoder(emotion)
+        emotion_embedding = emotion_embedding.to(device)
 
         # 调整 emotion_embedding 的长度以匹配 emb
         emotion_embedding = F.interpolate(
             emotion_embedding.transpose(1, 2),  # 将形状变为 [4, 256, 600]
             size=emb.shape[1],  # 目标长度为 1998
             mode='linear'
-        ).transpose(1, 2)  # 将形状变回 [4, 1998, 256]
+        ).transpose(1, 2).to(device)  # 将形状变回 [4, 1998, 256]
 
         # 合并音频和情绪嵌入
         combined_embedding = torch.cat([emb, emotion_embedding], dim=-1)
-
+        combined_embedding = combined_embedding.to(device)
         return combined_embedding
 
     def encode_lip(self, audio: torch.Tensor, cond_embed: torch.Tensor) -> torch.Tensor:
@@ -367,7 +376,9 @@ class FiLMTransformer(nn.Module):
         pred = y["keyframes"]
         new_mask = y["mask"][..., :: self.step].squeeze((1, 2))
         pred[~new_mask] = 0.0  # pad the unknown
-        pose_hidden = self.frame_cond_projection(pred.detach().clone().cuda())
+
+        pose_hidden = self.frame_cond_projection(pred.detach().clone())
+
         pose_embed = self.abs_pos_encoding(pose_hidden)
         pose_tokens = self.frame_norm_cond(pose_embed)
         # do conditional dropout for guide poses
@@ -404,8 +415,6 @@ class FiLMTransformer(nn.Module):
         y: Optional[torch.Tensor] = None,
         cond_drop_prob: float = 0.0,
     ) -> torch.Tensor:
-
-        _validate_input(x, times, y)
         # 处理 4 维输入
         if x.dim() == 4:
             x = x.permute(0, 3, 1, 2).squeeze(-1)
@@ -415,7 +424,6 @@ class FiLMTransformer(nn.Module):
                 y["emotion"] = y["emotion"].squeeze(1)
 
         batch_size, device = x.shape[0], x.device
-
         if self.cond_mode == "uncond":
             cond_embed = torch.zeros(
                 (x.shape[0], x.shape[1], self.cond_feature_dim),
@@ -428,7 +436,6 @@ class FiLMTransformer(nn.Module):
 
             # 假设情感标签在 y 字典中
             cond_embed = self.encode_audio(cond_embed, emotion)
-
             if self.data_format == "face":
                 cond_embed = self.encode_lip(y["audio"], cond_embed)
                 pose_tokens = None

@@ -37,6 +37,7 @@ class TrainLoop:
         rank: int = 0,
         world_size: int = 1
     ):
+        self.device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
         # 初始化训练循环的各种参数
         self.args = args
         self.dataset = args.dataset
@@ -176,6 +177,8 @@ class TrainLoop:
         if self.rank == 0:
             self.log_step()
 
+
+
     def forward_backward(self, batch: torch.Tensor, cond: Dict[str, Any]):
         # 前向传播和反向传播
         self.mp_trainer.zero_grad()
@@ -234,7 +237,7 @@ class TrainLoop:
 
 def parse_resume_step_from_filename(filename: str) -> int:
     """
-    从形如 path/to/modelNNNNNN.pt 的文件名中解析步骤数，其中 NNNNNN 是检查点的步骤数。
+    从形如 path/to/model.pt 的文件名中解析步骤数，其中  是检查点的步骤数。
     """
     split = filename.split("model")
     if len(split) < 2:
@@ -263,3 +266,4 @@ def log_loss_dict(diffusion: Any, ts: torch.Tensor, losses: Dict[str, torch.Tens
         for sub_t, sub_loss in zip(ts.cpu().numpy(), values.detach().cpu().numpy()):
             quartile = int(4 * sub_t / diffusion.num_timesteps)
             logger.logkv_mean(f"{key}_q{quartile}", sub_loss)
+
