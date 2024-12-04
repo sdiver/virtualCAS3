@@ -127,12 +127,7 @@ def _load_pose_data(
                 prosody_grouped_predictions = prosody.get('grouped_predictions', [])
                 if prosody_grouped_predictions:
                     emotion_data = prosody_grouped_predictions[0].get('predictions', [])
-            if not emotion_data:
-                print(Fore.RED + f"No emotion data found for {curr_path_name}" + Style.RESET_ALL)
-                continue
 
-                # 打印提取的情感数据的摘要
-            print(Fore.GREEN + f"Emotion data for {curr_path_name}: {len(emotion_data)} frames" + Style.RESET_ALL)
 
         except Exception as e:
             print(Fore.RED + f"Error extracting emotion data for {curr_path_name}:" + Style.RESET_ALL)
@@ -169,10 +164,6 @@ def _load_pose_data(
 
         emotion_tensor = torch.stack(emotion_tensors)
 
-        print(Fore.BLUE + f"Emotion tensor shape before interpolation: {emotion_tensor.shape}" + Style.RESET_ALL)
-        print(
-            Fore.BLUE + f"Emotion tensor contains NaN before interpolation: {torch.isnan(emotion_tensor).any()}" + Style.RESET_ALL)
-
         # 确保 emotion_tensor 的长度与姿势数据一致
         target_length = len(curr_pose)
 
@@ -197,9 +188,6 @@ def _load_pose_data(
 
             # 将插值后的数据转换回tensor
             emotion_tensor = torch.tensor(np.array(interpolated_emotions).T, dtype=torch.float)
-            print(Fore.CYAN + f"Emotion tensor shape after interpolation: {emotion_tensor.shape}" + Style.RESET_ALL)
-            print(
-                Fore.CYAN + f"Emotion tensor contains NaN after interpolation: {torch.isnan(emotion_tensor).any()}" + Style.RESET_ALL)
 
         # 验证数据长度的一致性
         assert len(curr_pose) == emotion_tensor.shape[
@@ -207,13 +195,7 @@ def _load_pose_data(
         assert len(curr_pose) * audio_per_frame == len(
             curr_audio), f"motion {curr_pose.shape} vs audio {curr_audio.shape}"
 
-        # 检查 NaN 值
-        if torch.isnan(emotion_tensor).any():
-            print(
-                Back.RED + Fore.WHITE + f"Warning: NaN values found in emotion tensor for {curr_path_name}" + Style.RESET_ALL)
-            # 可以选择跳过这个样本或者用 0 替换 NaN 值
-            emotion_tensor = torch.nan_to_num(emotion_tensor, nan=0.0)
-            print(Fore.YELLOW + "NaN values have been replaced with 0.0" + Style.RESET_ALL)
+
         '''
         emotion analyse ended 
         '''

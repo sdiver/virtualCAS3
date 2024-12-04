@@ -7,7 +7,7 @@ LICENSE file in the root directory of this source tree.
 
 import json
 from typing import Callable, Optional
-
+from colorama import init, Fore, Back, Style
 import torch
 import torch.nn as nn
 from einops import rearrange
@@ -127,13 +127,8 @@ class FiLMTransformer(nn.Module):
         # 打印初始的条件特征维度
         if self.data_format == "pose":
             self.cond_feature_dim = cond_feature_dim + latent_dim
-            print(f"Pose data format - Updated cond_feature_dim: {self.cond_feature_dim}")
-
         elif self.data_format == "face":
-            self.cond_feature_dim = cond_feature_dim + latent_dim + ff_size
-            print(f"Face data format - Updated cond_feature_dim: {self.cond_feature_dim}")
-            print(f"Added ff_size: {ff_size}")
-        # 位置编码
+            self.cond_feature_dim = cond_feature_dim + latent_dim + 338 * 3
         self.rotary = None
         self.abs_pos_encoding = nn.Identity()
         # 如果使用旋转位置编码，替换绝对位置编码
@@ -199,6 +194,7 @@ class FiLMTransformer(nn.Module):
 
         # 更新条件投影以适应新的维度
         self.cond_projection = nn.Linear(self.cond_feature_dim, latent_dim)
+
         self.non_attn_cond_projection = nn.Sequential(
             nn.LayerNorm(latent_dim),
             nn.Linear(latent_dim, latent_dim),
@@ -415,6 +411,7 @@ class FiLMTransformer(nn.Module):
         y: Optional[torch.Tensor] = None,
         cond_drop_prob: float = 0.0,
     ) -> torch.Tensor:
+
         # 处理 4 维输入
         if x.dim() == 4:
             x = x.permute(0, 3, 1, 2).squeeze(-1)
@@ -433,9 +430,9 @@ class FiLMTransformer(nn.Module):
         else:
             cond_embed = y["audio"]
             emotion = y["emotion"]
-
             # 假设情感标签在 y 字典中
             cond_embed = self.encode_audio(cond_embed, emotion)
+
             if self.data_format == "face":
                 cond_embed = self.encode_lip(y["audio"], cond_embed)
                 pose_tokens = None
@@ -454,10 +451,11 @@ class FiLMTransformer(nn.Module):
         )
         keep_mask_embed = rearrange(keep_mask, "b -> b 1 1")
         keep_mask_hidden = rearrange(keep_mask, "b -> b 1")
+
+
         cond_tokens = self.cond_projection(cond_embed)
 
         cond_tokens = self.abs_pos_encoding(cond_tokens)
-
         if self.data_format == "face":
             cond_tokens = self.cond_encoder(cond_tokens)
 
