@@ -1204,6 +1204,7 @@ class GaussianDiffusion:
         :return: a dict with the key "loss" containing a tensor of shape [N].
                  Some mean or variance settings may also have other keys.
         """
+
         mask = model_kwargs["y"]["mask"]
         if model_kwargs is None:
             model_kwargs = {}
@@ -1212,11 +1213,13 @@ class GaussianDiffusion:
         x_t = self.q_sample(
             x_start, t, noise=noise
         )  # use the formula to diffuse the starting tensor by t steps
+
         terms = {}
 
         # set random dropout for conditioning in training
         model_kwargs["cond_drop_prob"] = 0.2
         model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
+
         target = {
             ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(
                 x_start=x_start, x_t=x_t, t=t
@@ -1231,6 +1234,7 @@ class GaussianDiffusion:
         missing_mask = model_kwargs["y"]["missing"][..., 0]
         missing_mask = missing_mask.unsqueeze(1).unsqueeze(1)
         missing_mask = mask * missing_mask
+
         terms["rot_mse"] = self.masked_l2(target, model_output, missing_mask)
         if self.lambda_vel > 0.0:
             target_vel = target[..., 1:] - target[..., :-1]
@@ -1252,7 +1256,6 @@ class GaussianDiffusion:
                 clip_denoised=False,
                 model_kwargs=model_kwargs,
             )["output"]
-
         return terms
 
 

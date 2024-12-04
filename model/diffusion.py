@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
-
+from colorama import init, Fore, Back, Style
 from model.guide import GuideTransformer
 from model.modules.audio_encoder import Wav2VecEncoder
 from model.modules.rotary_embedding_torch import RotaryEmbedding
@@ -103,17 +103,18 @@ class FiLMTransformer(nn.Module):
         cond_mode: str = "audio",
         split_type: str = "train",
         device: str = "cuda",
+        emotion_dim: int = 48,  # 新增：情感维度参数
         **kwargs,
     ) -> None:
         super().__init__()
 
-        # 新增：情感编码器
+        # # 新增：情感编码器
         self.emotion_encoder = nn.Sequential(
-            nn.Linear(args.emotion_dim, latent_dim),
+            nn.Linear(emotion_dim, latent_dim),
             nn.ReLU(),
             nn.Linear(latent_dim, latent_dim)
         )
-        # 更新条件特征维度以包含情感
+        # # 更新条件特征维度以包含情感
         self.cond_feature_dim = cond_feature_dim + latent_dim
 
         self.nfeats = nfeats
@@ -316,12 +317,28 @@ class FiLMTransformer(nn.Module):
             z0 = self.audio_model.feature_extractor(a0)
             z1 = self.audio_model.feature_extractor(a1)
             emb = torch.cat((z0, z1), axis=1).permute(0, 2, 1)
-        # 编码情感
-        emotion_embedding = self.emotion_encoder(emotion)
-        # 将情感嵌入添加到音频嵌入中
-        emb = torch.cat((emb, emotion_embedding.unsqueeze(1).repeat(1, emb.shape[1], 1)), dim=-1)
 
-        return emb
+        # 编码情感
+        emotion = emotion.float()
+
+        if emotion.dim() == 1:
+            emotion = emotion.unsqueeze(0)  # 添加批次维度
+        elif emotion.dim() == 3:
+            emotion = emotion.squeeze(1)  # 从 [B, 1, D] 变为 [B, D]
+
+        emotion_embedding = self.emotion_encoder(emotion)
+
+        # 调整 emotion_embedding 的长度以匹配 emb
+        emotion_embedding = F.interpolate(
+            emotion_embedding.transpose(1, 2),  # 将形状变为 [4, 256, 600]
+            size=emb.shape[1],  # 目标长度为 1998
+            mode='linear'
+        ).transpose(1, 2)  # 将形状变回 [4, 1998, 256]
+
+        # 合并音频和情绪嵌入
+        combined_embedding = torch.cat([emb, emotion_embedding], dim=-1)
+
+        return combined_embedding
 
     def encode_lip(self, audio: torch.Tensor, cond_embed: torch.Tensor) -> torch.Tensor:
         # 编码唇部
@@ -387,9 +404,18 @@ class FiLMTransformer(nn.Module):
         y: Optional[torch.Tensor] = None,
         cond_drop_prob: float = 0.0,
     ) -> torch.Tensor:
+
+        _validate_input(x, times, y)
+        # 处理 4 维输入
         if x.dim() == 4:
             x = x.permute(0, 3, 1, 2).squeeze(-1)
+
+        if y is not None and "emotion" in y:
+            if y["emotion"].dim() == 3:
+                y["emotion"] = y["emotion"].squeeze(1)
+
         batch_size, device = x.shape[0], x.device
+
         if self.cond_mode == "uncond":
             cond_embed = torch.zeros(
                 (x.shape[0], x.shape[1], self.cond_feature_dim),
@@ -399,16 +425,21 @@ class FiLMTransformer(nn.Module):
         else:
             cond_embed = y["audio"]
             emotion = y["emotion"]
+
             # 假设情感标签在 y 字典中
             cond_embed = self.encode_audio(cond_embed, emotion)
+
             if self.data_format == "face":
                 cond_embed = self.encode_lip(y["audio"], cond_embed)
                 pose_tokens = None
+
             if self.data_format == "pose":
                 pose_tokens = self.encode_keyframes(y, cond_drop_prob, batch_size)
+
         assert cond_embed is not None, "cond emb should not be none"
         # process conditioning information
         x = self.input_projection(x)
+
         x = self.abs_pos_encoding(x)
         audio_cond_drop_prob = cond_drop_prob
         keep_mask = prob_mask_like(
@@ -417,10 +448,17 @@ class FiLMTransformer(nn.Module):
         keep_mask_embed = rearrange(keep_mask, "b -> b 1 1")
         keep_mask_hidden = rearrange(keep_mask, "b -> b 1")
         cond_tokens = self.cond_projection(cond_embed)
+
         cond_tokens = self.abs_pos_encoding(cond_tokens)
+
         if self.data_format == "face":
             cond_tokens = self.cond_encoder(cond_tokens)
+
         null_cond_embed = self.null_cond_embed.to(cond_tokens.dtype)
+        if self.null_cond_embed.shape[1] < cond_tokens.shape[1]:
+            null_cond_embed = F.pad(null_cond_embed, (0, 0, 0, cond_tokens.shape[1] - self.null_cond_embed.shape[1]))
+
+
         # # 填充或复制 null_cond_embed 使其匹配 cond_tokens 的长度
         # if self.null_cond_embed.shape[1] < cond_tokens.shape[1]:
         #     padding_size = cond_tokens.shape[1] - self.null_cond_embed.shape[1]
@@ -455,6 +493,7 @@ class FiLMTransformer(nn.Module):
         cond_tokens = torch.where(
             keep_mask_embed, cond_tokens, null_cond_embed[:, : cond_tokens.shape[1], :]
         )
+
         mean_pooled_cond_tokens = cond_tokens.mean(dim=-2)
         cond_hidden = self.non_attn_cond_projection(mean_pooled_cond_tokens)
 
@@ -462,6 +501,7 @@ class FiLMTransformer(nn.Module):
         t_hidden = self.time_mlp(times)
         t = self.to_time_cond(t_hidden)
         t_tokens = self.to_time_tokens(t_hidden)
+
         null_cond_hidden = self.null_cond_hidden.to(t.dtype)
         cond_hidden = torch.where(keep_mask_hidden, cond_hidden, null_cond_hidden)
         t += cond_hidden
@@ -472,10 +512,22 @@ class FiLMTransformer(nn.Module):
 
         # Pass through the transformer decoder
         output = self.seqTransDecoder(x, cond_tokens, t, memory2=pose_tokens)
+
         output = self.final_layer(output)
+
         if self.data_format == "pose":
             output = output.permute(0, 2, 1)
             output = self._run_single_pose_conv(output)
             output = self.final_conv(output)
             output = output.permute(0, 2, 1)
+
         return output
+def _validate_input(x, times, y):
+    assert x.dim() in [3, 4], f"Expected x to have 3 or 4 dimensions, got {x.dim()}"
+    assert times.dim() == 1, f"Expected times to have 1 dimension, got {times.dim()}"
+    if y is not None:
+        assert isinstance(y, dict), "Expected y to be a dictionary"
+        assert "audio" in y, "Expected 'audio' in y dictionary"
+        assert "emotion" in y, "Expected 'emotion' in y dictionary"
+        assert y["audio"].dim() == 3, f"Expected audio to have 3 dimensions, got {y['audio'].dim()}"
+        assert y["emotion"].dim() in [1, 2, 3], f"Expected emotion to have 1, 2 or 3 dimensions, got {y['emotion'].dim()}"

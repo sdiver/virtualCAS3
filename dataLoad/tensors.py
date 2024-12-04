@@ -39,6 +39,7 @@ def collate_v2(batch):
     alenbatch = [b["audio_lengths"] for b in notnone_batches]
     keyframebatch = [b["keyframes"] for b in notnone_batches]
     klenbatch = [b["key_lengths"] for b in notnone_batches]
+    emotionbatch = [b["emotion"] for b in notnone_batches]  # 添加情绪批次
 
     databatchTensor = collate_tensors(databatch)
     missingbatchTensor = collate_tensors(missingbatch)
@@ -47,6 +48,7 @@ def collate_v2(batch):
     alenbatchTensor = torch.as_tensor(alenbatch)
     keyframeTensor = collate_tensors(keyframebatch)
     klenbatchTensor = torch.as_tensor(klenbatch)
+    emotionTensor = torch.stack(emotionbatch)  # 堆叠情绪张量
 
     maskbatchTensor = (
         lengths_to_mask(lenbatchTensor, databatchTensor.shape[-1])
@@ -63,6 +65,7 @@ def collate_v2(batch):
             "alengths": alenbatchTensor,
             "keyframes": keyframeTensor,
             "klengths": klenbatchTensor,
+            "emotion": emotionTensor,  # 添加情绪张量到条件字典
         }
     }
     return motion, cond
@@ -80,6 +83,8 @@ def social_collate(batch):
             "key_lengths": b["k_length"],
             "audio_lengths": b["a_length"],
             "missing": torch.tensor(b["missing"]).to(torch.float32),
+            "emotion": b["emotions"].clone().detach().to(torch.float32).squeeze() if "emotions" in b else torch.zeros(1, dtype=torch.float32),
+
         }
         for b in batch
     ]

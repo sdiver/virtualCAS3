@@ -8,11 +8,12 @@ LICENSE file in the root directory of this source tree.
 import os
 from typing import Dict, Iterable, List, Union
 
+
 import numpy as np
 import torch
 from torch.utils import data
 
-from utils.misc import prGreen
+from utils.misc import prGreen, prRed
 
 
 class Social(data.Dataset):
@@ -46,6 +47,8 @@ class Social(data.Dataset):
         self.audio_per_frame = 1600
         self.max_audio_length = self.max_seq_length * self.audio_per_frame
         self.min_seq_length = 400
+        # 添加情緒
+        self.emotions = data_dict.get("emotions", None)
 
         # set up training/validation splits
         train_idx = list(range(0, len(data_dict["data"]) - 6))
@@ -113,7 +116,7 @@ class Social(data.Dataset):
         # 3. 转换为最终数组
         final_array = np.array(padded_list)
 
-        missing_max_len = max(len(sublist) for sublist in data_dict["missing"])
+        # missing_max_len = max(len(sublist) for sublist in data_dict["missing"])
 
         # 2. 正确填充到最大维度
         missing_padded_list = []
@@ -129,20 +132,27 @@ class Social(data.Dataset):
 
         try:
             self.audio = process_audio_tensors(data_dict["audio"], idx)
-            print(f"处理后的音频批次形状: {self.audio.shape}")
-
-            # 验证填充是否正确
-            print("\n验证:")
-            print(f"最大值: {self.audio.max()}")
-            print(f"最小值: {self.audio.min()}")
-            print(f"包含的非零值数量: {torch.count_nonzero(self.audio)}")
 
         except Exception as e:
             print(f"处理出错: {str(e)}")
 
+            # 处理情绪数据
+        try:
+            if self.emotions is not None:
+                self.emotions = process_emotion_tensors(self.emotions, idx)
+                print(f"处理后的情绪批次形状: {self.emotions.shape}")
+            else:
+                print("没有情绪数据")
+        except Exception as e:
+            print(f"情绪数据处理出错: {str(e)}")
+
+
         self.data = np.take(final_array, idx, axis=0)
         self.missing = np.take(missing_final_array, idx, axis=0)
         self.audio = np.take(self.audio, idx, axis=0)
+        #emotion input from np
+        if self.emotions is not None:
+            self.emotions = np.take(self.emotions, idx, axis=0)
         self.lengths = np.take(data_dict["lengths"], idx, axis=0)
         self.total_len = sum([len(d) for d in self.data])
 
@@ -164,6 +174,7 @@ class Social(data.Dataset):
         chunk_missing = []
         chunk_lengths = []
         chunk_audio = []
+        chunk_emotions = []
         # create sequences of set lengths
         for d_idx in range(len(self.data)):
             curr_data = self.data[d_idx]
@@ -192,6 +203,10 @@ class Social(data.Dataset):
         self.lengths = np.take(chunk_lengths, idx, axis=0)
         self.audio = np.take(chunk_audio, idx, axis=0)
         self.total_len = len(self.data)
+        # ... 在循环中添加情绪数据的处理 ...
+        if self.emotions is not None:
+            self.emotions = np.take(chunk_emotions, idx, axis=0)
+
 
     def _register_keyframe_step(self) -> None:
         if self.add_frame_cond == 1:
@@ -199,17 +214,13 @@ class Social(data.Dataset):
         if self.add_frame_cond is None:
             self.step = 1
 
-    def _pad_sequence(
-        self, sequence: np.ndarray, actual_length: int, max_length: int
-    ) -> np.ndarray:
-        sequence = np.concatenate(
-            (
-                sequence,
-                np.zeros((max_length - actual_length, sequence.shape[-1])),
-            ),
-            axis=0,
-        )
-        return sequence
+    def _pad_sequence(self, sequence,actual_length: int, max_length):
+        if isinstance(sequence, np.ndarray):
+            return _pad_numpy(sequence, max_length)
+        elif isinstance(sequence, torch.Tensor):
+            return _pad_tensor(sequence, max_length)
+        else:
+            raise TypeError(f"Unsupported sequence type: {type(sequence)}")
 
     def _get_idx(self, item: int) -> int:
         cumulative_len = 0
@@ -238,6 +249,7 @@ class Social(data.Dataset):
             isnonzero = np.any(curr_missing)
         missing = curr_missing
         motion = data_dict["motion"][start : start + length, :]
+        emotions = data_dict.get("emotions", None)
         keyframes = motion[:: self.step]
         audio = data_dict["audio"][
             start * self.audio_per_frame : (start + length) * self.audio_per_frame,
@@ -261,10 +273,15 @@ class Social(data.Dataset):
             keyframes = self._pad_sequence(
                 keyframes, data_dict["k_length"], max_step_length
             )
+            if emotions is not None:
+                emotions = emotions[start: start + length]
+                data_dict["e_length"] = len(emotions)
+                emotions = self._pad_sequence(emotions, data_dict["e_length"], self.max_seq_length)
         data_dict["motion"] = motion
         data_dict["keyframes"] = keyframes
         data_dict["audio"] = audio
         data_dict["missing"] = missing
+        data_dict["emotions"] = emotions
         return data_dict
 
     def __len__(self) -> int:
@@ -276,6 +293,10 @@ class Social(data.Dataset):
             item = self._get_idx(item)
         motion = self.data[item]
         audio = self.audio[item]
+        # 在getitem中对情绪进行导入处理
+        emotions = self.emotions[item] if self.emotions is not None else None
+
+        e_length = len(emotions) if emotions is not None else 0
         m_length = self.lengths[item]
         missing = self.missing[item]
         a_length = len(audio)
@@ -295,6 +316,8 @@ class Social(data.Dataset):
             "keyframes": keyframes,
             "k_length": k_length,
             "missing": missing,
+            "emotions": emotions,  # 添加这行
+            "e_length": e_length,  # 添加这行
         }
         if not self.split == "test" and not self.chunk:
             data_dict = self._get_random_subsection(data_dict)
@@ -313,7 +336,6 @@ def process_audio_tensors(tensor_list, idx):
     # 获取长度信息
     lengths = [tensor.shape[0] for tensor in selected_tensors]
     max_len = max(lengths)
-    print(f"最长音频长度: {max_len}")
 
     # 填充到最长长度
     processed_tensors = []
@@ -333,3 +355,54 @@ def process_audio_tensors(tensor_list, idx):
     return torch.stack(processed_tensors)
 
 
+def process_emotion_tensors(tensor_list, idx):
+
+    # 选择张量
+    selected_tensors = [tensor_list[i] for i in idx]
+
+    # 获取长度信息
+    lengths = [tensor.shape[0] for tensor in selected_tensors]
+    max_len = max(lengths)
+
+    # 填充到最长长度
+    processed_tensors = []
+    for tensor in selected_tensors:
+        if tensor.shape[0] < max_len:
+            # 创建填充
+            padding = torch.zeros((max_len - tensor.shape[0], tensor.shape[1]), dtype=tensor.dtype,
+                                  device=tensor.device)
+            # 拼接原始数据和填充
+            padded = torch.cat([tensor, padding], dim=0)
+            processed_tensors.append(padded)
+        else:
+            processed_tensors.append(tensor)
+    result = torch.stack(processed_tensors)
+
+    return result
+
+
+def _pad_numpy(sequence, max_length):
+    actual_length = len(sequence)
+    if actual_length >= max_length:
+        return sequence[:max_length]
+    else:
+        if sequence.ndim == 1:
+            padded = np.zeros(max_length, dtype=sequence.dtype)
+        else:
+            padded = np.zeros((max_length,) + sequence.shape[1:], dtype=sequence.dtype)
+        padded[:actual_length] = sequence
+        return padded
+
+
+def _pad_tensor(sequence, max_length):
+    actual_length = sequence.size(0)
+    if actual_length >= max_length:
+        return sequence[:max_length]
+    else:
+        if sequence.dim() == 1:
+            padded = torch.zeros(max_length, dtype=sequence.dtype, device=sequence.device)
+        else:
+            padded = torch.zeros((max_length,) + tuple(sequence.shape[1:]), dtype=sequence.dtype,
+                                 device=sequence.device)
+        padded[:actual_length] = sequence
+        return padded

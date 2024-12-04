@@ -8,7 +8,7 @@ LICENSE file in the root directory of this source tree.
 import os
 
 from typing import Dict, List
-
+from colorama import init, Fore, Back, Style
 import numpy as np
 import json
 import torch
@@ -99,52 +99,84 @@ def _load_pose_data(
         '''
         增加情绪识别
         '''
-        # ... existing code ...
-
-        '''
-        增加情绪识别
-        '''
-        # 获取任务jobid
-        job_id = create_multipart_request(curr_path_name)
-
-        # 查询jobid识别后的结果
+        # 情感分析部分
+        audio_path = curr_path_name.replace("_body_pose.npy", "_audio.wav")
+        job_id = create_multipart_request(audio_path)
         job_preview_result = job_preview(job_id)
 
-        # 解析 JSON 数据
-        response_json = json.loads(job_preview_result)
 
-        emotion_data = response_json[0]['results']['predictions'][0]['models']['burst']['grouped_predictions'][0][
-            'predictions']
+        # 安全地提取情感数据
+        emotion_data = []
+        try:
+            if isinstance(job_preview_result, list) and len(job_preview_result) > 0:
+                result = job_preview_result[0]
+            elif isinstance(job_preview_result, dict):
+                result = job_preview_result
+            else:
+                raise ValueError("Unexpected job_preview_result structure")
+
+            predictions = result.get('results', {}).get('predictions', [])
+            if predictions:
+                burst_data = predictions[0].get('models', {}).get('burst', {})
+                grouped_predictions = burst_data.get('grouped_predictions', [])
+                if grouped_predictions:
+                    emotion_data = grouped_predictions[0].get('predictions', [])
+
+            if not emotion_data:
+                prosody = predictions[0].get('models', {}).get('prosody', {})
+                prosody_grouped_predictions = prosody.get('grouped_predictions', [])
+                if prosody_grouped_predictions:
+                    emotion_data = prosody_grouped_predictions[0].get('predictions', [])
+            if not emotion_data:
+                print(Fore.RED + f"No emotion data found for {curr_path_name}" + Style.RESET_ALL)
+                continue
+
+                # 打印提取的情感数据的摘要
+            print(Fore.GREEN + f"Emotion data for {curr_path_name}: {len(emotion_data)} frames" + Style.RESET_ALL)
+
+        except Exception as e:
+            print(Fore.RED + f"Error extracting emotion data for {curr_path_name}:" + Style.RESET_ALL)
+            print(Fore.RED + f"Error details: {str(e)}" + Style.RESET_ALL)
+            # 如果无法提取情感数据，我们将跳过这个文件
+            continue
 
         # 创建一个情绪名称列表
-        emotion_names = [emotion['name'] for emotion in emotion_data[0]['emotions']]
-
-        print(emotion_names)
+        if emotion_data and 'emotions' in emotion_data[0]:
+            emotion_names = [emotion['name'] for emotion in emotion_data[0]['emotions']]
+        else:
+            print(Fore.RED + f"No emotions found in the first prediction for {curr_path_name}" + Style.RESET_ALL)
+            continue
 
         # 提取情绪信息并转换为 tensor
         emotion_tensors = []
         timestamps = []
-        frame_durations = []
 
-        # 遍历整个emotions的结果
         for frame in emotion_data:
-            begin, end = frame['time']['begin'], frame['time']['end']
-            duration = end - begin
-            timestamps.append((begin, end))
-            frame_emotions = {emotion['name']: emotion['score'] for emotion in frame['emotions']}
-            frame_tensor = torch.tensor([frame_emotions.get(name, 0.0) for name in emotion_names], dtype=torch.float)
-            emotion_tensors.append(frame_tensor)
-            frame_durations.append(duration)
+            if 'time' in frame and 'emotions' in frame:
+                begin, end = frame['time'].get('begin', 0), frame['time'].get('end', 0)
+                timestamps.append((begin, end))
+                frame_emotions = {emotion['name']: emotion['score'] for emotion in frame['emotions']}
+                frame_tensor = torch.tensor([frame_emotions.get(name, 0.0) for name in emotion_names],
+                                            dtype=torch.float)
+                emotion_tensors.append(frame_tensor)
+            else:
+                print(Fore.YELLOW + f"Skipping a frame due to missing data in {curr_path_name}" + Style.RESET_ALL)
 
-        # 将emotion_tensors列表转换为tensor
+
+        if not emotion_tensors:
+            print(f"No valid emotion data found for {curr_path_name}")
+            continue
+
         emotion_tensor = torch.stack(emotion_tensors)
+
+        print(Fore.BLUE + f"Emotion tensor shape before interpolation: {emotion_tensor.shape}" + Style.RESET_ALL)
+        print(
+            Fore.BLUE + f"Emotion tensor contains NaN before interpolation: {torch.isnan(emotion_tensor).any()}" + Style.RESET_ALL)
 
         # 确保 emotion_tensor 的长度与姿势数据一致
         target_length = len(curr_pose)
 
         if emotion_tensor.shape[0] != target_length:
-            print(
-                f"Adjusting emotion tensor length from {emotion_tensor.shape[0]} to match pose data length {target_length}")
 
             # 计算音频时间戳
             audio_duration = len(curr_audio) / audio_per_frame
@@ -165,6 +197,9 @@ def _load_pose_data(
 
             # 将插值后的数据转换回tensor
             emotion_tensor = torch.tensor(np.array(interpolated_emotions).T, dtype=torch.float)
+            print(Fore.CYAN + f"Emotion tensor shape after interpolation: {emotion_tensor.shape}" + Style.RESET_ALL)
+            print(
+                Fore.CYAN + f"Emotion tensor contains NaN after interpolation: {torch.isnan(emotion_tensor).any()}" + Style.RESET_ALL)
 
         # 验证数据长度的一致性
         assert len(curr_pose) == emotion_tensor.shape[
@@ -172,6 +207,13 @@ def _load_pose_data(
         assert len(curr_pose) * audio_per_frame == len(
             curr_audio), f"motion {curr_pose.shape} vs audio {curr_audio.shape}"
 
+        # 检查 NaN 值
+        if torch.isnan(emotion_tensor).any():
+            print(
+                Back.RED + Fore.WHITE + f"Warning: NaN values found in emotion tensor for {curr_path_name}" + Style.RESET_ALL)
+            # 可以选择跳过这个样本或者用 0 替换 NaN 值
+            emotion_tensor = torch.nan_to_num(emotion_tensor, nan=0.0)
+            print(Fore.YELLOW + "NaN values have been replaced with 0.0" + Style.RESET_ALL)
         '''
         emotion analyse ended 
         '''
