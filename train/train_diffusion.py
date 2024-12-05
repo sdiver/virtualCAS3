@@ -82,7 +82,7 @@ def main(rank: int, world_size: int):
     model.to(rank)
     if world_size > 1:
         model = DDP(
-            model, device_ids=[rank], output_device=rank, find_unused_parameters=True
+            model, device_ids=[rank], output_device=rank
         )
     """
     6\参数统计与训练

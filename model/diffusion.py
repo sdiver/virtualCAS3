@@ -82,7 +82,6 @@ class Audio2LipRegressionTransformer(torch.nn.Module):
         # 投影输出
         x = self.project_output(x)
 
-        # 重塑输出为顶点坐标
         verts = x.view(B, T, self.n_vertices, 3)
         return verts
 
@@ -134,6 +133,7 @@ class FiLMTransformer(nn.Module):
         # 如果使用旋转位置编码，替换绝对位置编码
         if use_rotary:
             self.rotary = RotaryEmbedding(dim=latent_dim)
+
         else:
             self.abs_pos_encoding = PositionalEncoding(
                 latent_dim, dropout, batch_first=True
@@ -315,13 +315,17 @@ class FiLMTransformer(nn.Module):
     def encode_audio(self, raw_audio: torch.Tensor, emotion: torch.Tensor) -> torch.Tensor:
         # 编码音频
         device = next(self.parameters()).device
+
+
         emotion = emotion.to(device)
         a0 = self.audio_resampler(raw_audio[:, :, 0].to(device))
         a1 = self.audio_resampler(raw_audio[:, :, 1].to(device))
+
         with torch.no_grad():
             z0 = self.audio_model.feature_extractor(a0)
             z1 = self.audio_model.feature_extractor(a1)
             emb = torch.cat((z0, z1), axis=1).permute(0, 2, 1)
+
         self.emotion_encoder = self.emotion_encoder.to(device)
         # 编码情感
         emotion = emotion.float()
@@ -330,7 +334,9 @@ class FiLMTransformer(nn.Module):
             emotion = emotion.unsqueeze(0)  # 添加批次维度
         elif emotion.dim() == 3:
             emotion = emotion.squeeze(1)  # 从 [B, 1, D] 变为 [B, D]
+
         emotion_embedding = self.emotion_encoder(emotion)
+
         emotion_embedding = emotion_embedding.to(device)
 
         # 调整 emotion_embedding 的长度以匹配 emb
@@ -340,9 +346,14 @@ class FiLMTransformer(nn.Module):
             mode='linear'
         ).transpose(1, 2).to(device)  # 将形状变回 [4, 1998, 256]
 
+
         # 合并音频和情绪嵌入
         combined_embedding = torch.cat([emb, emotion_embedding], dim=-1)
         combined_embedding = combined_embedding.to(device)
+
+        if torch.isnan(combined_embedding).any():
+            combined_embedding = torch.nan_to_num(combined_embedding, nan=0.0, posinf=1.0, neginf=-1.0)
+
         return combined_embedding
 
     def encode_lip(self, audio: torch.Tensor, cond_embed: torch.Tensor) -> torch.Tensor:
@@ -365,7 +376,6 @@ class FiLMTransformer(nn.Module):
         ).permute(0, 2, 1)
         cond_embed = torch.cat((cond_embed, lip_cond), dim=-1)
         return cond_embed
-
     def encode_keyframes(
         self, y: torch.Tensor, cond_drop_prob: float, batch_size: int
     ) -> torch.Tensor:
