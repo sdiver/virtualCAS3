@@ -170,6 +170,7 @@ class TrainLoop:
             self.save()
 
     def run_step(self, batch: torch.Tensor, cond: Dict[str, Any]):
+        assert "emotion" in cond["y"], "Emotion data is missing in the input"
         # 运行单个训练步骤
         self.forward_backward(batch, cond)
         self.mp_trainer.optimize(self.opt)
@@ -181,9 +182,19 @@ class TrainLoop:
 
     def forward_backward(self, batch: torch.Tensor, cond: Dict[str, Any]):
         # 前向传播和反向传播
+
+        # 打印输入批次和条件的基本信息
+        print(f"\nBatch shape: {batch.shape}")
+        print(f"Condition keys: {cond.keys()}")
+        if 'y' in cond:
+            print(f"Condition 'y' keys: {cond['y'].keys()}")
+            if 'emotion' in cond['y']:
+                print(f"Emotion shape: {cond['y']['emotion'].shape}")
+
         self.mp_trainer.zero_grad()
         t, weights = self.schedule_sampler.sample(batch.shape[0], batch.device)
-
+        print(f"Sampled timesteps shape: {t.shape}")
+        print(f"Weights shape: {weights.shape}")
         compute_losses = functools.partial(
             self.diffusion.training_losses,
             self.ddp_model,
@@ -193,13 +204,32 @@ class TrainLoop:
         )
 
         losses = compute_losses()
-
+        print(f"Computed losses: {losses.keys()}")
         if isinstance(self.schedule_sampler, LossAwareSampler):
             self.schedule_sampler.update_with_local_losses(t, losses["loss"].detach())
 
         loss = (losses["loss"] * weights).mean()
         log_loss_dict(self.diffusion, t, {k: v * weights for k, v in losses.items()})
+
+        # 在反向传播之前打印一些梯度信息
+        print("Parameter gradients before backward:")
+        for name, param in self.ddp_model.named_parameters():
+            if param.grad is not None:
+                print(f"{name}: grad shape {param.grad.shape}, grad mean {param.grad.mean()}")
+            else:
+                print(f"{name}: No grad")
+
         self.mp_trainer.backward(loss)
+
+        # 在反向传播之后再次打印梯度信息
+        print("Parameter gradients after backward:")
+        for name, param in self.ddp_model.named_parameters():
+            if param.grad is not None:
+                print(f"{name}: grad shape {param.grad.shape}, grad mean {param.grad.mean()}")
+            else:
+                print(f"{name}: No grad")
+
+        print("Forward-backward pass completed.")
 
     def _anneal_lr(self):
         # 学习率退火

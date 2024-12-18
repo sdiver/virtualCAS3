@@ -28,7 +28,29 @@ def get_person_num(config_path):
 
 
 def load_model(model, state_dict):
+    # 打印模型的结构和参数维度
+    print("Model structure and dimensions:")
+    for name, param in model.named_parameters():
+        print(f"{name}: {param.shape}")
+
+    # # 打印 state_dict 的结构和维度
+    print("\nState dict structure and dimensions:")
+    for key, value in state_dict.items():
+        print(f"{key}: {value.shape}")
+
+    # 特别检查 cond_projection.weight
+    # if 'cond_projection.weight' in state_dict and hasattr(model, 'cond_projection'):
+    #     state_dict_shape = state_dict['cond_projection.weight'].shape
+    #     model_shape = model.cond_projection.weight.shape
+    #     print(f"\nSpecial check for cond_projection.weight:")
+    #     print(f"Shape in state_dict: {state_dict_shape}")
+    #     print(f"Shape in model: {model_shape}")
+    #     if state_dict_shape != model_shape:
+    #         print(f"Mismatch detected in cond_projection.weight!")
+
+    # 尝试加载状态字典，捕获可能的异常
     missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+
     assert len(unexpected_keys) == 0, unexpected_keys
     assert all(
         [

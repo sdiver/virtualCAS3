@@ -123,7 +123,16 @@ def featurewise_affine(x, scale_shift):
     scale, shift = scale_shift
     return (scale + 1) * x + shift
 
-
+# d_model: 模型的维度，即每个token的嵌入维度。
+# nhead: 多头注意力机制中的头数。
+# dim_feedforward: 前馈网络的隐藏层维度。
+# dropout: Dropout比率，用于防止过拟合。
+# activation: 激活函数，用于非线性变换。
+# layer_norm_eps: Layer Normalization的epsilon值，用于数值稳定性。
+# batch_first: 是否将batch维度放在第一位。
+# norm_first: 是否在注意力和前馈网络之前进行归一化。
+# use_cm: 是否使用条件计算（Conditional Computation）。
+# rotary: Rotary位置编码的配置。
 class FiLMTransformerDecoderLayer(nn.Module):
     def __init__(
         self,
@@ -139,38 +148,46 @@ class FiLMTransformerDecoderLayer(nn.Module):
         use_cm=False,
     ):
         super().__init__()
+        # 自注意力层（self_attn）：处理序列内部的关系。
         self.self_attn = nn.MultiheadAttention(
             d_model, nhead, dropout=dropout, batch_first=batch_first
         )
+        # 交叉注意力层（multihead_attn）：处理序列与外部信息的关系。
         self.multihead_attn = nn.MultiheadAttention(
             d_model, nhead, dropout=dropout, batch_first=batch_first
         )
         # Feedforward
+        # 前馈网络（linear1, linear2）：进行非线性变换。
         self.linear1 = nn.Linear(d_model, dim_feedforward)
         self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
 
+        # 归一化层（norm1, norm2, norm3）：用于稳定训练。
         self.norm_first = norm_first
         self.norm1 = nn.LayerNorm(d_model, eps=layer_norm_eps)
         self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps)
         self.norm3 = nn.LayerNorm(d_model, eps=layer_norm_eps)
+        # Dropout层：防止过拟合。
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
         self.dropout3 = nn.Dropout(dropout)
         self.activation = activation
 
+        # FiLM层：用于条件计算
         self.film1 = DenseFiLM(d_model)
         self.film2 = DenseFiLM(d_model)
         self.film3 = DenseFiLM(d_model)
 
+        # 条件计算部分（if use_cm）：额外的注意力机制，用于更复杂的模型结构。
         if use_cm:
+
             self.multihead_attn2 = nn.MultiheadAttention(  # 2
                 d_model, nhead, dropout=dropout, batch_first=batch_first
             )
             self.norm2a = nn.LayerNorm(d_model, eps=layer_norm_eps)  # 2
             self.dropout2a = nn.Dropout(dropout)  # 2
             self.film2a = DenseFiLM(d_model)  # 2
-
+        # Rotary位置编码：一种改进的位置编码方法。
         self.rotary = rotary
         self.use_rotary = rotary is not None
 

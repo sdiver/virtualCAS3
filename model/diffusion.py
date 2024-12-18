@@ -122,13 +122,17 @@ class FiLMTransformer(nn.Module):
         self.data_format = args.data_format
         self.split_type = split_type
         self.device = device
-
+        print("cond_feature_dim", cond_feature_dim)
+        print("latent_dim", latent_dim)
+        print("data_format", self.data_format)
         # 打印初始的条件特征维度
         if self.data_format == "pose":
             self.cond_feature_dim = cond_feature_dim + latent_dim
         elif self.data_format == "face":
             self.cond_feature_dim = cond_feature_dim + latent_dim + 338 * 3
         self.rotary = None
+        print("cond_feature_dim", self.cond_feature_dim)
+
         self.abs_pos_encoding = nn.Identity()
         # 如果使用旋转位置编码，替换绝对位置编码
         if use_rotary:
@@ -426,6 +430,9 @@ class FiLMTransformer(nn.Module):
         if x.dim() == 4:
             x = x.permute(0, 3, 1, 2).squeeze(-1)
 
+        print("y content:", y)
+        if y is not None and "emotion" in y:
+            print("Emotion shape:", y["emotion"].shape)
         if y is not None and "emotion" in y:
             if y["emotion"].dim() == 3:
                 y["emotion"] = y["emotion"].squeeze(1)
@@ -525,10 +532,33 @@ class FiLMTransformer(nn.Module):
         c = torch.cat((cond_tokens, t_tokens), dim=-2)
         cond_tokens = self.norm_cond(c)
 
+        # 打印解码器信息
+        print("\nDecoder Information:")
+        print(f"Decoder type: {type(self.seqTransDecoder)}")
+        print(f"Number of decoder layers: {len(self.seqTransDecoder.stack)}")
+        for i, layer in enumerate(self.seqTransDecoder.stack):
+            print(f"Layer {i}:")
+            if hasattr(layer, 'self_attn'):
+                print(f"  Self-attention heads: {layer.self_attn.num_heads}")
+            if hasattr(layer, 'cross_attn'):
+                print(f"  Cross-attention heads: {layer.cross_attn.num_heads}")
+            if hasattr(layer, 'ffn'):
+                print(f"  FFN dimensions: {layer.ffn.fc1.in_features} -> {layer.ffn.fc2.out_features}")
+
+        # 记录输入形状
+        print(f"\nInput shape: {x.shape}")
+
+
         # Pass through the transformer decoder
         output = self.seqTransDecoder(x, cond_tokens, t, memory2=pose_tokens)
 
+        # 记录解码器输出形状
+        print(f"Decoder output shape: {output.shape}")
+
         output = self.final_layer(output)
+
+        # 记录最终输出形状
+        print(f"Final output shape: {output.shape}")
 
         if self.data_format == "pose":
             output = output.permute(0, 2, 1)

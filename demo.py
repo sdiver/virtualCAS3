@@ -5,7 +5,6 @@
 """
 
 # 导入必要的库
-import copy
 import json
 from typing import Dict, Union
 
@@ -28,17 +27,32 @@ class GradioModel:
     def __init__(self, face_args, pose_args) -> None:
         # 初始化面部模型和姿势模型
         self.face_model, self.face_diffusion, self.device = self._setup_model(
-            face_args, "checkpoints-bak/checkpoints-184/diffusion/c1_face/model000155000.pt"
-            # face_args, "checkpoints/diffusion/c1_face/model000025000.pt"
+            # face_args, "checkpoints-bak/checkpoints-184/diffusion/c1_face/model000155000.pt"
+            face_args, "checkpoints/diffusion/c1_face_secondtest/model000000000.pt"
         )
+
+        print("--------------------------------------------pose exxxx")
         self.pose_model, self.pose_diffusion, _ = self._setup_model(
-            pose_args, "checkpoints-bak/checkpoints-184/diffusion/c1_pose/model000340000.pt"
-            # pose_args, "checkpoints/diffusion/c1_pose_test/model000340000.pt"
+            # pose_args, "checkpoints-bak/checkpoints-184/diffusion/c1_pose/model000340000.pt"
+            pose_args, "checkpoints/diffusion/c1_pose_test_123/model000811680.pt"
         )
         # 加载标准化数据
         stats = torch.load("dataset/PXB184/data_stats.pth")
         stats["pose_mean"] = stats["pose_mean"].reshape(-1)
         stats["pose_std"] = stats["pose_std"].reshape(-1)
+        print("Stats overview:", stats)
+
+        for key, value in stats.items():
+            if isinstance(value, torch.Tensor):
+                print(f"{key}:")
+                print(f"  Shape: {value.shape}")
+                print(f"  Data type: {value.dtype}")
+                print(f"  Min: {value.min():.5f}")
+                print(f"  Max: {value.max():.5f}")
+                print(f"  Mean: {value.mean():.5f}")
+                print(f"  Std: {value.std():.5f}")
+            else:
+                print(f"{key}: {value}")
         self.stats = stats
         # 设置渲染器
         config_base = f"./checkpoints-bak/checkpoints-184/PXB184"
@@ -342,9 +356,9 @@ def audio_to_avatar(audio: np.ndarray, num_repetitions: int, top_p: float):
 # 初始化Gradio模型
 gradio_model = GradioModel(
     # face_args="./checkpoints-bak/checkpoints-184/diffusion/c1_face/args.json",
-    face_args="./checkpoints/diffusion/c1_face/args.json",
-    pose_args="./checkpoints-bak/checkpoints-184/diffusion/c1_pose/args.json",
-    # pose_args="./checkpoints/diffusion/c1_pose_test/args.json",
+    face_args="./checkpoints/diffusion/c1_face_secondtest/args.json",
+    # pose_args="./checkpoints-bak/checkpoints-184/diffusion/c1_pose/args.json",
+    pose_args="./checkpoints/diffusion/c1_pose_test_123/args.json",
 )
 
 # 创建Gradio界面
